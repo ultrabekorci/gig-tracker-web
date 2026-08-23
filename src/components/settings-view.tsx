@@ -4,6 +4,12 @@ import React, { useState } from "react";
 import { Client, Category } from "@/types";
 import { useTelegram } from "./telegram-provider";
 import {
+  saveLocalWorkplace,
+  deleteLocalWorkplace,
+  saveLocalCategory,
+  deleteLocalCategory,
+} from "@/lib/storage";
+import {
   Settings,
   Coins,
   Briefcase,
@@ -82,7 +88,19 @@ export function SettingsView({ clients, categories, onRefresh }: SettingsViewPro
     try {
       hapticFeedback("light");
       const randomColor = colorOptions[Math.floor(Math.random() * colorOptions.length)];
-      const res = await fetch("/api/clients", {
+
+      // 1. Save locally immediately!
+      saveLocalWorkplace({
+        name: name.trim(),
+        platform: platformType,
+        defaultFeeRate: feeRate,
+        defaultHourlyRate: hourly,
+        defaultDailyRate: daily,
+        color: randomColor,
+      });
+
+      // 2. Try API
+      fetch("/api/clients", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -93,13 +111,12 @@ export function SettingsView({ clients, categories, onRefresh }: SettingsViewPro
           defaultDailyRate: daily,
           color: randomColor,
         }),
-      });
-      if (res.ok) {
-        setNewClientName("");
-        setNewClientFee("0");
-        hapticFeedback("success");
-        onRefresh();
-      }
+      }).catch(() => {});
+
+      setNewClientName("");
+      setNewClientFee("0");
+      hapticFeedback("success");
+      onRefresh();
     } catch (e) {
       console.error(e);
       hapticFeedback("error");
@@ -112,11 +129,14 @@ export function SettingsView({ clients, categories, onRefresh }: SettingsViewPro
     if (!confirm("Ushbu ish manbasini o'chirmoqchimisiz?")) return;
     try {
       hapticFeedback("warning");
-      const res = await fetch(`/api/clients/${id}`, { method: "DELETE" });
-      if (res.ok) {
-        hapticFeedback("success");
-        onRefresh();
-      }
+      // 1. Delete locally immediately!
+      deleteLocalWorkplace(id);
+
+      // 2. Try API
+      fetch(`/api/clients/${id}`, { method: "DELETE" }).catch(() => {});
+
+      hapticFeedback("success");
+      onRefresh();
     } catch (e) {
       console.error(e);
     }
@@ -127,19 +147,25 @@ export function SettingsView({ clients, categories, onRefresh }: SettingsViewPro
     setLoading(true);
     try {
       hapticFeedback("light");
-      const res = await fetch("/api/categories", {
+      // 1. Save locally immediately!
+      saveLocalCategory({
+        name: name.trim(),
+        type,
+      });
+
+      // 2. Try API
+      fetch("/api/categories", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: name.trim(),
           type,
         }),
-      });
-      if (res.ok) {
-        setNewCatName("");
-        hapticFeedback("success");
-        onRefresh();
-      }
+      }).catch(() => {});
+
+      setNewCatName("");
+      hapticFeedback("success");
+      onRefresh();
     } catch (e) {
       console.error(e);
       hapticFeedback("error");
@@ -152,11 +178,14 @@ export function SettingsView({ clients, categories, onRefresh }: SettingsViewPro
     if (!confirm("Ushbu kategoriyani o'chirmoqchimisiz?")) return;
     try {
       hapticFeedback("warning");
-      const res = await fetch(`/api/categories/${id}`, { method: "DELETE" });
-      if (res.ok) {
-        hapticFeedback("success");
-        onRefresh();
-      }
+      // 1. Delete locally immediately!
+      deleteLocalCategory(id);
+
+      // 2. Try API
+      fetch(`/api/categories/${id}`, { method: "DELETE" }).catch(() => {});
+
+      hapticFeedback("success");
+      onRefresh();
     } catch (e) {
       console.error(e);
     }
@@ -326,7 +355,7 @@ export function SettingsView({ clients, categories, onRefresh }: SettingsViewPro
                 className="p-1.5 text-gray-400 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-colors"
                 title="O'chirish"
               >
-                <Trash2 className="w-4 h-4" />
+                <Trash2 className="w-3.5 h-3.5" />
               </button>
             </div>
           ))}

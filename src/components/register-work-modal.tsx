@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { Client, WorkType } from "@/types";
 import { formatCurrency } from "@/lib/utils";
+import { saveLocalTransaction } from "@/lib/storage";
 import { useTelegram } from "./telegram-provider";
 import {
   X,
@@ -175,14 +176,37 @@ export function RegisterWorkModal({
       const selectedClient = clients.find((c) => c.id === selectedClientId);
 
       let finalAmount = calculatedSalary;
-      let txType = "INCOME";
+      let txType: "INCOME" | "EXPENSE" = "INCOME";
 
       if (workType === "ADVANCE") {
         txType = "EXPENSE";
         finalAmount = Math.abs(calculatedSalary);
       }
 
-      const res = await fetch("/api/transactions", {
+      // 1. Save locally immediately!
+      const newSavedTx = saveLocalTransaction({
+        type: txType,
+        workType,
+        amount: finalAmount,
+        currency,
+        description: memo || selectedClient?.name || "Ish smenasi",
+        date: new Date(workDate).toISOString(),
+        status: "PAID",
+        startTime: arrivalTime,
+        endTime: departureTime,
+        breakMinutes: parseInt(breakMinutes) || 0,
+        hourlyRate: parseFloat(hourlyWage) || 0,
+        totalHours: calculatedHours,
+        isNightShift,
+        isOvertime,
+        isSpecialDuty,
+        unitCount: parseInt(perCaseCount) || 1,
+        color: workColor,
+        clientId: selectedClientId || null,
+      });
+
+      // 2. Background API call
+      fetch("/api/transactions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -206,11 +230,7 @@ export function RegisterWorkModal({
           color: workColor,
           clientId: selectedClientId || null,
         }),
-      });
-
-      if (!res.ok) {
-        throw new Error("Smenani saqlashda xatolik yuz berdi");
-      }
+      }).catch(() => {});
 
       hapticFeedback("success");
       onSuccess();
