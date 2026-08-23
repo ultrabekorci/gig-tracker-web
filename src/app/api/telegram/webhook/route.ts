@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { parseEntry } from "@/lib/telegram/parse";
-import { transcribeTelegramVoice } from "@/lib/telegram/voice";
+import {
+  transcribeTelegramVoice,
+  isVoiceTranscriptionConfigured,
+  speechProviderLabel,
+  MAX_SYNC_AUDIO_SECONDS,
+} from "@/lib/telegram/voice";
 import { isDatabaseConfigured, saveEntryForSender, getStatsForSender } from "@/lib/telegram/entries";
 import {
   buildConfirmMessage,
@@ -52,6 +57,7 @@ export async function GET(request: Request) {
       ok: true,
       webhookUrl,
       mode: isDatabaseConfigured() ? "database" : "mini-app",
+      speechToText: speechProviderLabel(),
       webhookInfo: await infoRes.json(),
     });
   } catch (e: any) {
@@ -72,7 +78,6 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const openAiKey = process.env.OPENAI_API_KEY;
     const appUrl = appUrlFrom(request);
 
     const message = body.message;
@@ -97,11 +102,20 @@ export async function POST(request: Request) {
     // ---- Voice / audio message -> text ----
     const voice = message.voice || message.audio || message.video_note;
     if (voice) {
-      if (!openAiKey) {
+      if (!isVoiceTranscriptionConfigured()) {
         await sendMessage(
           `🎙 <b>Ovozli xabar qabul qilindi.</b>\n\n` +
-            `Ammo ovozni matnga aylantirish uchun serverda <code>OPENAI_API_KEY</code> ulanmagan.\n` +
+            `Ammo ovozni matnga aylantirish serverda sozlanmagan ` +
+            `(<code>GOOGLE_SPEECH_API_KEY</code> yoki <code>GOOGLE_SERVICE_ACCOUNT_JSON</code>).\n` +
             `Iltimos, hozircha matn orqali yozing yoki Mini App orqali kiriting.`
+        );
+        return NextResponse.json({ ok: true });
+      }
+
+      if (voice.duration && voice.duration > MAX_SYNC_AUDIO_SECONDS) {
+        await sendMessage(
+          `🎙 Ovozli xabar juda uzun (${voice.duration} soniya).\n` +
+            `Iltimos, ${MAX_SYNC_AUDIO_SECONDS} soniyagacha bo'lgan qisqa xabar yuboring.`
         );
         return NextResponse.json({ ok: true });
       }
@@ -111,7 +125,7 @@ export async function POST(request: Request) {
       const transcript = await transcribeTelegramVoice({
         botToken: token,
         fileId: voice.file_id,
-        apiKey: openAiKey,
+        durationSeconds: voice.duration,
       });
 
       if (!transcript) {

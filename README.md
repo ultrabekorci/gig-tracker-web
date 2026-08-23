@@ -70,7 +70,8 @@ sifatida yoziladi.
 
 Mikrofon tugmasini bosib gapirsangiz bo'ldi:
 
-1. Bot ovozni yuklab oladi va Whisper (`OPENAI_API_KEY`) orqali matnga aylantiradi;
+1. Bot ovozni yuklab oladi va **Google Cloud Speech-to-Text** orqali matnga
+   aylantiradi (`uz-UZ` tili qo'llab-quvvatlanadi);
 2. matnni xuddi yozilgan xabar kabi tahlil qiladi;
 3. summani va izohni ajratib, yozuvni saqlaydi.
 
@@ -78,5 +79,28 @@ Raqamlar so'z bilan aytilsa ham tushunadi — masalan
 *"yuz yigirma ming zavodda ishladim"* → **120 000 kirim**,
 *"bugun ellik ming so'm tushlikka xarajat qildim"* → **50 000 chiqim**.
 
-`OPENAI_API_KEY` berilmagan bo'lsa, bot buni aytib, matn orqali yozishni
-taklif qiladi.
+Ovozli xabar 60 soniyagacha bo'lishi kerak (Google'ning sinxron `recognize`
+chegarasi). Hech qanday kalit berilmagan bo'lsa, bot buni aytib, matn orqali
+yozishni taklif qiladi.
+
+#### Google Speech-to-Text'ni ulash
+
+1. Google Cloud loyihasida **Cloud Speech-to-Text API**'ni yoqing;
+2. quyidagilardan birini `.env` ga qo'ying:
+
+   | Usul | O'zgaruvchi |
+   | --- | --- |
+   | API kaliti | `GOOGLE_SPEECH_API_KEY` |
+   | Service account | `GOOGLE_SERVICE_ACCOUNT_JSON` (JSON yoki uning base64 nusxasi) |
+   | Service account (alohida) | `GOOGLE_CLIENT_EMAIL` + `GOOGLE_PRIVATE_KEY` |
+
+   Service account berilsa, bot OAuth2 tokenini o'zi oladi va keshlaydi —
+   qo'shimcha kutubxona kerak emas.
+
+3. ixtiyoriy sozlamalar: `GOOGLE_SPEECH_LANGUAGE` (standart `uz-UZ`),
+   `GOOGLE_SPEECH_ALT_LANGUAGES` (masalan `ru-RU,en-US`),
+   `GOOGLE_SPEECH_MODEL`.
+
+`OPENAI_API_KEY` faqat zaxira sifatida qoldirilgan: Google sozlanmagan bo'lsa,
+bot Whisper'ga o'tadi. Joriy holatni
+`GET /api/telegram/webhook` javobidagi `speechToText` maydonida ko'rish mumkin.

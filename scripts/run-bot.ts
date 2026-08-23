@@ -9,7 +9,12 @@ import { Bot, Context, InlineKeyboard } from "grammy";
 import dotenv from "dotenv";
 
 import { parseEntry } from "@/lib/telegram/parse";
-import { transcribeTelegramVoice } from "@/lib/telegram/voice";
+import {
+  transcribeTelegramVoice,
+  isVoiceTranscriptionConfigured,
+  speechProviderLabel,
+  MAX_SYNC_AUDIO_SECONDS,
+} from "@/lib/telegram/voice";
 import { isDatabaseConfigured, saveEntryForSender, getStatsForSender } from "@/lib/telegram/entries";
 import {
   buildConfirmMessage,
@@ -32,7 +37,6 @@ if (!token) {
 
 const bot = new Bot(token);
 const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/$/, "");
-const openAiKey = process.env.OPENAI_API_KEY;
 const defaultCurrency = process.env.DEFAULT_CURRENCY || "KRW";
 
 const appKeyboard = () =>
@@ -97,12 +101,22 @@ bot.on(["message:voice", "message:audio", "message:video_note"], async (ctx) => 
   const file = ctx.message.voice || ctx.message.audio || ctx.message.video_note;
   if (!file) return;
 
-  if (!openAiKey) {
+  if (!isVoiceTranscriptionConfigured()) {
     await ctx.reply(
       "🎙 <b>Ovozli xabar qabul qilindi.</b>\n\n" +
-        "Ammo ovozni matnga aylantirish uchun <code>OPENAI_API_KEY</code> ulanmagan.\n" +
+        "Ammo ovozni matnga aylantirish sozlanmagan " +
+        "(<code>GOOGLE_SPEECH_API_KEY</code> yoki <code>GOOGLE_SERVICE_ACCOUNT_JSON</code>).\n" +
         "Iltimos, matn orqali yozing.",
       html
+    );
+    return;
+  }
+
+  const duration = "duration" in file ? file.duration : undefined;
+  if (duration && duration > MAX_SYNC_AUDIO_SECONDS) {
+    await ctx.reply(
+      `🎙 Ovozli xabar juda uzun (${duration} soniya). ` +
+        `Iltimos, ${MAX_SYNC_AUDIO_SECONDS} soniyagacha bo'lgan qisqa xabar yuboring.`
     );
     return;
   }
@@ -112,7 +126,7 @@ bot.on(["message:voice", "message:audio", "message:video_note"], async (ctx) => 
   const transcript = await transcribeTelegramVoice({
     botToken: token,
     fileId: file.file_id,
-    apiKey: openAiKey,
+    durationSeconds: duration,
   });
 
   if (!transcript) {
@@ -143,7 +157,9 @@ async function main() {
   console.log(
     `   Ma'lumotlar: ${isDatabaseConfigured() ? "ma'lumotlar bazasi (DATABASE_URL)" : "Mini App (qurilma xotirasi)"}`
   );
-  console.log(`   Ovozli xabar: ${openAiKey ? "yoqilgan (Whisper)" : "o'chirilgan — OPENAI_API_KEY yo'q"}`);
+  console.log(
+    `   Ovozli xabar: ${isVoiceTranscriptionConfigured() ? `yoqilgan — ${speechProviderLabel()}` : "o'chirilgan — kalit yo'q"}`
+  );
   console.log(`   Mini App URL: ${appUrl}`);
 
   const stop = () => bot.stop();
