@@ -24,6 +24,7 @@ import { TransactionList } from "@/components/transaction-list";
 import { InvoicesView } from "@/components/invoices-view";
 import { SettingsView } from "@/components/settings-view";
 import { RegisterWorkModal } from "@/components/register-work-modal";
+import { DaySummaryModal } from "@/components/day-summary-modal";
 import { BottomNav } from "@/components/bottom-nav";
 import { useTelegram } from "@/components/telegram-provider";
 import {
@@ -47,6 +48,7 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState<"calendar" | "salary" | "analysis" | "transactions" | "invoices" | "settings">("calendar");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedDateForModal, setSelectedDateForModal] = useState<Date | undefined>(undefined);
+  const [isDaySummaryModalOpen, setIsDaySummaryModalOpen] = useState(false);
 
   // Sync state from storage
   const syncFromStorage = useCallback(() => {
@@ -64,6 +66,41 @@ export default function Home() {
   useEffect(() => {
     syncFromStorage();
   }, [syncFromStorage]);
+
+  // Handle Deep Links from Telegram Bot
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const urlParams = new URLSearchParams(window.location.search);
+      const action = urlParams.get("action");
+      if (action === "add") {
+        const type = urlParams.get("type") as "INCOME" | "EXPENSE" || "INCOME";
+        const amount = parseFloat(urlParams.get("amount") || "0");
+        const desc = urlParams.get("desc") || "";
+        
+        if (amount > 0) {
+          const newTx: Partial<Transaction> = {
+            type,
+            amount,
+            description: desc,
+            date: new Date().toISOString(),
+            status: "PAID",
+            workType: type === "INCOME" ? "DAILY_WAGE" : undefined,
+            currency
+          };
+          // Save and instantly sync
+          const updatedList = saveLocalTransaction(newTx);
+          setTransactions(updatedList);
+          setStats(calculateLocalStats(updatedList, currency));
+          
+          if (hapticFeedback) hapticFeedback("success");
+          alert("Muvaffaqiyatli saqlandi!");
+          
+          // Clear URL
+          window.history.replaceState({}, document.title, window.location.pathname);
+        }
+      }
+    }
+  }, [currency, hapticFeedback]);
 
   // Transaction CRUD Handlers (Instant State + Storage Update)
   const handleAddOrEditTransaction = (txData: Partial<Transaction>) => {
@@ -113,7 +150,15 @@ export default function Home() {
 
   const handleCalendarDayClick = (date: Date) => {
     setSelectedDateForModal(date);
-    setIsModalOpen(true);
+    // Check if there are transactions for this day
+    const dayStr = date.toISOString().split("T")[0];
+    const dayTxs = transactions.filter(t => new Date(t.date).toISOString().split("T")[0] === dayStr);
+    
+    if (dayTxs.length > 0) {
+      setIsDaySummaryModalOpen(true);
+    } else {
+      setIsModalOpen(true);
+    }
   };
 
   return (
@@ -312,6 +357,7 @@ export default function Home() {
             onDeleteClient={handleDeleteClient}
             onAddCategory={handleAddOrEditCategory}
             onDeleteCategory={handleDeleteCategory}
+            onOpenHistory={() => setActiveTab("transactions")}
           />
         )}
       </main>
@@ -337,6 +383,29 @@ export default function Home() {
           }}
           onSuccess={() => {
             syncFromStorage();
+          }}
+        />
+      )}
+
+      {/* Day Summary Modal */}
+      {isDaySummaryModalOpen && selectedDateForModal && (
+        <DaySummaryModal
+          date={selectedDateForModal}
+          transactions={transactions.filter(t => new Date(t.date).toISOString().split("T")[0] === selectedDateForModal.toISOString().split("T")[0])}
+          onClose={() => setIsDaySummaryModalOpen(false)}
+          onAddNew={() => {
+            setIsDaySummaryModalOpen(false);
+            setIsModalOpen(true);
+          }}
+          onEdit={(txData) => {
+            handleAddOrEditTransaction(txData);
+            // It automatically closes the edit state inside the modal
+          }}
+          onDelete={(id) => {
+            handleDeleteTransaction(id);
+            // If we deleted the last transaction for this day, maybe close the modal
+            const remaining = transactions.filter(t => t.id !== id && new Date(t.date).toISOString().split("T")[0] === selectedDateForModal.toISOString().split("T")[0]);
+            if (remaining.length === 0) setIsDaySummaryModalOpen(false);
           }}
         />
       )}

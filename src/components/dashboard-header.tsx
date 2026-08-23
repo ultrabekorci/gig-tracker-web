@@ -26,15 +26,6 @@ export function DashboardHeader({ onOpenSettings, onOpenHistory }: DashboardHead
           <div>
             <div className="flex items-center space-x-1.5">
               <h1 className="font-bold text-sm sm:text-base tracking-tight text-foreground">{displayName}</h1>
-              {isTelegram ? (
-                <span className="text-[9px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded-full bg-blue-500/10 text-blue-500 border border-blue-500/20">
-                  Telegram
-                </span>
-              ) : (
-                <span className="text-[9px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
-                  Pro
-                </span>
-              )}
             </div>
             <p className="text-[11px] text-gray-500 dark:text-gray-400">
               Gig & Shift Tracker
@@ -42,38 +33,8 @@ export function DashboardHeader({ onOpenSettings, onOpenHistory }: DashboardHead
           </div>
         </div>
 
-        {/* Right: Quick Action Controls (Tarix, Sozlamalar, Mavzu) */}
+        {/* Right: Quick Action Controls (Mavzu) */}
         <div className="flex items-center space-x-1.5 sm:space-x-2">
-          {/* Tarix (History) button */}
-          {onOpenHistory && (
-            <button
-              onClick={() => {
-                hapticFeedback("light");
-                onOpenHistory();
-              }}
-              className="flex items-center space-x-1 px-2.5 py-1.5 rounded-xl bg-gray-100 dark:bg-gray-800/80 hover:bg-gray-200 dark:hover:bg-gray-700 text-foreground font-bold text-xs transition-colors border border-border"
-              title="Tranzaksiyalar Tarixi"
-            >
-              <Receipt className="w-3.5 h-3.5 text-indigo-500" />
-              <span className="hidden sm:inline">Tarix</span>
-            </button>
-          )}
-
-          {/* Sozlamalar (Settings) button */}
-          {onOpenSettings && (
-            <button
-              onClick={() => {
-                hapticFeedback("light");
-                onOpenSettings();
-              }}
-              className="flex items-center space-x-1 px-2.5 py-1.5 rounded-xl bg-gray-100 dark:bg-gray-800/80 hover:bg-gray-200 dark:hover:bg-gray-700 text-foreground font-bold text-xs transition-colors border border-border"
-              title="Sozlamalar"
-            >
-              <Settings className="w-3.5 h-3.5 text-indigo-500" />
-              <span className="hidden sm:inline">Sozlamalar</span>
-            </button>
-          )}
-
           {/* Dark / Light Toggle */}
           <button
             onClick={toggleTheme}

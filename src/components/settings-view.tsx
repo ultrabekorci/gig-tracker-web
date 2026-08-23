@@ -26,6 +26,7 @@ import {
   Upload,
   AlertTriangle,
   Shield,
+  Receipt,
 } from "lucide-react";
 
 interface SettingsViewProps {
@@ -36,6 +37,7 @@ interface SettingsViewProps {
   onDeleteClient?: (id: string) => void;
   onAddCategory?: (cat: Partial<Category>) => void;
   onDeleteCategory?: (id: string) => void;
+  onOpenHistory?: () => void;
 }
 
 export function SettingsView({
@@ -46,6 +48,7 @@ export function SettingsView({
   onDeleteClient,
   onAddCategory,
   onDeleteCategory,
+  onOpenHistory,
 }: SettingsViewProps) {
   const { currency, setCurrency, hapticFeedback } = useTelegram();
 
@@ -323,6 +326,19 @@ export function SettingsView({
             </p>
           </div>
         </div>
+        {onOpenHistory && (
+          <button
+            onClick={() => {
+              hapticFeedback("light");
+              onOpenHistory();
+            }}
+            className="flex items-center space-x-1 px-3 py-2 rounded-xl bg-gray-100 dark:bg-gray-800/80 hover:bg-gray-200 dark:hover:bg-gray-700 text-foreground font-bold text-xs transition-colors border border-border shadow-sm flex-shrink-0"
+          >
+            <Receipt className="w-4 h-4 text-indigo-500" />
+            <span className="hidden sm:inline">Tranzaksiyalar Tarixi</span>
+            <span className="sm:hidden">Tarix</span>
+          </button>
+        )}
       </div>
 
       {/* 1. Currency Settings */}
