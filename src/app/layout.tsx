@@ -6,6 +6,8 @@ import { TelegramProvider } from "@/components/telegram-provider";
 export const metadata: Metadata = {
   title: "Gig Tracker — Frilanser & Gig Ishchilar uchun Moliya Ilovasi",
   description: "Kirim, chiqim, kutilayotgan to'lovlar va daromad tahlili boshqaruvi",
+  manifest: "/manifest.json",
+  appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "Gig Tracker" },
 };
 
 export const viewport: Viewport = {
@@ -13,6 +15,8 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
+  viewportFit: "cover",
+  themeColor: "#6366f1",
 };
 
 export default function RootLayout({
@@ -23,6 +27,9 @@ export default function RootLayout({
   return (
     <html lang="uz" className="dark">
       <head>
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        <meta name="mobile-web-app-capable" content="yes" />
         <Script
           src="https://telegram.org/js/telegram-web-app.js"
           strategy="beforeInteractive"

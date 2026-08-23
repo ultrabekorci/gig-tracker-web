@@ -44,3 +44,34 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(156, 163, 175, 0.5);
 }
+
+/* PWA safe areas */
+@supports (padding: env(safe-area-inset-bottom)) {
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+/* Smooth animations */
+@keyframes slideUp {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.animate-slide-up {
+  animation: slideUp 0.3s ease-out;
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.2s ease-out;
+}
+
+/* Number formatting for Korean Won */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}

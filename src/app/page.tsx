@@ -24,6 +24,7 @@ import { TransactionList } from "@/components/transaction-list";
 import { InvoicesView } from "@/components/invoices-view";
 import { SettingsView } from "@/components/settings-view";
 import { RegisterWorkModal } from "@/components/register-work-modal";
+import { BottomNav } from "@/components/bottom-nav";
 import { useTelegram } from "@/components/telegram-provider";
 import {
   Plus,
@@ -132,7 +133,7 @@ export default function Home() {
       {/* Main Container */}
       <main className="max-w-6xl mx-auto px-3.5 sm:px-6 pt-4 space-y-4">
         {/* Top Metric Cards */}
-        <StatsCards stats={stats} />
+        <StatsCards stats={stats} transactions={transactions} />
 
         {/* Goal Progress */}
         <GoalProgress
@@ -143,7 +144,7 @@ export default function Home() {
         />
 
         {/* Navigation Tabs Bar */}
-        <div className="flex items-center justify-between border-b border-border pb-2 overflow-x-auto">
+        <div className="hidden sm:flex items-center justify-between border-b border-border pb-2 overflow-x-auto">
           <div className="flex items-center space-x-1 sm:space-x-2 min-w-max">
             {/* 1. Calendar (Work) */}
             <button
@@ -312,20 +313,15 @@ export default function Home() {
         )}
       </main>
 
-      {/* Mobile Floating Action Button (FAB) */}
-      <div className="sm:hidden fixed bottom-5 right-5 z-40">
-        <button
-          onClick={() => {
-            setSelectedDateForModal(undefined);
-            setIsModalOpen(true);
-            hapticFeedback("heavy");
-          }}
-          className="w-14 h-14 rounded-full bg-indigo-600 hover:bg-indigo-700 text-white flex items-center justify-center shadow-2xl shadow-indigo-600/50 active:scale-95 transition-transform"
-          aria-label="Smena qo'shish"
-        >
-          <Plus className="w-6 h-6" />
-        </button>
-      </div>
+      {/* Mobile Bottom Navigation */}
+      <BottomNav
+        activeTab={activeTab}
+        onTabChange={(tab) => setActiveTab(tab as any)}
+        onOpenModal={() => {
+          setSelectedDateForModal(undefined);
+          setIsModalOpen(true);
+        }}
+      />
 
       {/* Register Work Modal */}
       {isModalOpen && (

@@ -22,6 +22,10 @@ import {
   Zap,
   X,
   Save,
+  Download,
+  Upload,
+  AlertTriangle,
+  Shield,
 } from "lucide-react";
 
 interface SettingsViewProps {
@@ -222,6 +226,85 @@ export function SettingsView({
       }
       setCustomCurrency("");
       hapticFeedback("success");
+    }
+  };
+
+  // Data Management Handlers
+  const handleExportData = () => {
+    hapticFeedback("light");
+    try {
+      const workplaces = JSON.parse(localStorage.getItem("gig_tracker_workplaces_v3") || "[]");
+      const categories = JSON.parse(localStorage.getItem("gig_tracker_categories_v3") || "[]");
+      const transactions = JSON.parse(localStorage.getItem("gig_tracker_transactions_v3") || "[]");
+
+      const exportData = {
+        version: 1,
+        exportDate: new Date().toISOString(),
+        workplaces,
+        categories,
+        transactions
+      };
+
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportData, null, 2));
+      const downloadAnchorNode = document.createElement('a');
+      downloadAnchorNode.setAttribute("href", dataStr);
+      const dateStr = new Date().toISOString().split('T')[0];
+      downloadAnchorNode.setAttribute("download", `gig-tracker-backup-${dateStr}.json`);
+      document.body.appendChild(downloadAnchorNode);
+      downloadAnchorNode.click();
+      downloadAnchorNode.remove();
+      hapticFeedback("success");
+    } catch (e) {
+      console.error("Export failed", e);
+    }
+  };
+
+  const handleImportData = () => {
+    hapticFeedback("light");
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".json";
+    input.onchange = (e: any) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        try {
+          const content = event.target?.result as string;
+          const parsed = JSON.parse(content);
+          
+          if (parsed.version && Array.isArray(parsed.workplaces) && Array.isArray(parsed.categories) && Array.isArray(parsed.transactions)) {
+            if (window.confirm("Bu barcha mavjud ma'lumotlaringizni o'chirib, import qilingan ma'lumotlar bilan almashtiradi. Davom etasizmi?")) {
+              localStorage.setItem("gig_tracker_workplaces_v3", JSON.stringify(parsed.workplaces));
+              localStorage.setItem("gig_tracker_categories_v3", JSON.stringify(parsed.categories));
+              localStorage.setItem("gig_tracker_transactions_v3", JSON.stringify(parsed.transactions));
+              hapticFeedback("success");
+              onRefresh();
+            }
+          } else {
+            alert("Noto'g'ri fayl formati!");
+          }
+        } catch (err) {
+          alert("Faylni o'qishda xatolik yuz berdi!");
+        }
+      };
+      reader.readAsText(file);
+    };
+    input.click();
+  };
+
+  const handleResetData = () => {
+    hapticFeedback("warning");
+    if (window.confirm("Barcha ma'lumotlarni tozalashni xohlaysizmi? Bu amalni orqaga qaytarib bo'lmaydi!")) {
+      const val = window.prompt("Tasdiqlash uchun 'TOZALASH' so'zini kiriting:");
+      if (val === "TOZALASH") {
+        localStorage.removeItem("gig_tracker_workplaces_v3");
+        localStorage.removeItem("gig_tracker_categories_v3");
+        localStorage.removeItem("gig_tracker_transactions_v3");
+        hapticFeedback("success");
+        onRefresh();
+      }
     }
   };
 
@@ -555,6 +638,47 @@ export function SettingsView({
               </button>
             </div>
           ))}
+        </div>
+      </div>
+
+      {/* 4. Data Management */}
+      <div className="bg-card border border-border rounded-3xl p-5 sm:p-6 space-y-4 shadow-sm">
+        <div className="flex items-center space-x-2.5">
+          <Shield className="w-5 h-5 text-indigo-500" />
+          <div>
+            <h3 className="font-bold text-sm sm:text-base text-foreground">Ma'lumotlarni Boshqarish (Data Management)</h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              Ma'lumotlarni zaxiralash, tiklash va tozalash
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+          <button
+            onClick={handleExportData}
+            className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 flex flex-col items-center justify-center gap-2 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-colors"
+          >
+            <Download className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
+            <span className="font-bold text-sm text-emerald-700 dark:text-emerald-300">📦 Ma'lumotlarni Eksport qilish (Backup)</span>
+          </button>
+
+          <button
+            onClick={handleImportData}
+            className="p-4 rounded-2xl bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 flex flex-col items-center justify-center gap-2 hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors"
+          >
+            <Upload className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+            <span className="font-bold text-sm text-blue-700 dark:text-blue-300">📥 Ma'lumotlarni Import qilish (Restore)</span>
+          </button>
+        </div>
+
+        <div className="pt-2">
+          <button
+            onClick={handleResetData}
+            className="w-full p-4 rounded-2xl bg-rose-50 dark:bg-rose-900/10 border border-rose-500/30 flex items-center justify-center gap-2 hover:bg-rose-100 dark:hover:bg-rose-900/20 transition-colors"
+          >
+            <AlertTriangle className="w-5 h-5 text-rose-600 dark:text-rose-400" />
+            <span className="font-bold text-sm text-rose-700 dark:text-rose-400">🗑️ Barcha Ma'lumotlarni Tozalash (Reset)</span>
+          </button>
         </div>
       </div>
     </div>
