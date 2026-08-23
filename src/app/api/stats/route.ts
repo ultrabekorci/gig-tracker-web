@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { ensureInitialData } from "@/lib/bootstrap";
 
 export const dynamic = "force-dynamic";
 
@@ -9,6 +10,8 @@ export async function GET(request: Request) {
     const userId = searchParams.get("userId") || "default-user";
     const monthParam = searchParams.get("month"); // 1-12 or undefined
     const yearParam = searchParams.get("year"); // 2026 or undefined
+
+    await ensureInitialData(userId);
 
     const user = await prisma.user.findUnique({
       where: { id: userId },

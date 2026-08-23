@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { ensureInitialData } from "@/lib/bootstrap";
 
 export const dynamic = "force-dynamic";
 
@@ -7,6 +8,8 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const userId = searchParams.get("userId") || "default-user";
+
+    await ensureInitialData(userId);
     const type = searchParams.get("type");
     const status = searchParams.get("status");
     const clientId = searchParams.get("clientId");

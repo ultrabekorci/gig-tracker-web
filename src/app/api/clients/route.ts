@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { ensureInitialData } from "@/lib/bootstrap";
 
 export const dynamic = "force-dynamic";
 
@@ -8,6 +9,8 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const userId = searchParams.get("userId") || "default-user";
 
+    await ensureInitialData(userId);
+
     const clients = await prisma.client.findMany({
       where: { userId },
       include: {
@@ -15,7 +18,7 @@ export async function GET(request: Request) {
           select: { transactions: true },
         },
       },
-      orderBy: { name: "asc" },
+      orderBy: { createdAt: "asc" },
     });
 
     return NextResponse.json(clients);
@@ -28,18 +31,32 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { userId = "default-user", name, platform = "Direct", defaultFeeRate = 0 } = body;
+    const {
+      userId = "default-user",
+      name,
+      platform = "Workplace",
+      color = "#6366f1",
+      defaultFeeRate = 0,
+      defaultHourlyRate = 10320,
+      defaultDailyRate = 120000,
+    } = body;
 
-    if (!name) {
+    if (!name || !name.trim()) {
       return NextResponse.json({ error: "Name is required" }, { status: 400 });
     }
+
+    await ensureInitialData(userId);
 
     const client = await prisma.client.create({
       data: {
         userId,
-        name,
+        name: name.trim(),
         platform,
+        color,
         defaultFeeRate: parseFloat(defaultFeeRate) || 0,
+        defaultHourlyRate: parseFloat(defaultHourlyRate) || 10320,
+        defaultDailyRate: parseFloat(defaultDailyRate) || 120000,
+        isActive: true,
       },
     });
 

@@ -11,7 +11,6 @@ import {
   Plus,
   Trash2,
   Check,
-  Globe,
   Sparkles,
   Zap,
 } from "lucide-react";
@@ -28,7 +27,9 @@ export function SettingsView({ clients, categories, onRefresh }: SettingsViewPro
   // New Client State
   const [newClientName, setNewClientName] = useState("");
   const [newClientFee, setNewClientFee] = useState("0");
-  const [newClientType, setNewClientType] = useState("Kunlik ish");
+  const [newClientHourly, setNewClientHourly] = useState("10320");
+  const [newClientDaily, setNewClientDaily] = useState("120000");
+  const [newClientPlatform, setNewClientPlatform] = useState("Kunlik ish");
 
   // New Category State
   const [newCatName, setNewCatName] = useState("");
@@ -40,21 +41,21 @@ export function SettingsView({ clients, categories, onRefresh }: SettingsViewPro
   const [loading, setLoading] = useState(false);
 
   // Common Currency Presets
-  const currencyPresets = [
+  const [currencyPresets, setCurrencyPresets] = useState([
     { code: "KRW", symbol: "₩", label: "Koreya Voni (KRW ₩)" },
     { code: "UZS", symbol: "so'm", label: "O'zbek So'mi (UZS)" },
     { code: "USD", symbol: "$", label: "AQSH Dollari (USD $)" },
     { code: "EUR", symbol: "€", label: "Yevro (EUR €)" },
     { code: "RUB", symbol: "₽", label: "Rossiya Rubli (RUB ₽)" },
-  ];
+  ]);
 
   // Quick Gig Platform Presets
   const platformPresets = [
-    { name: "Kunlik ish (Obekt / Smena)", platform: "Kunlik ish", fee: 0 },
-    { name: "Zavod / Fabrika (Kunlik / Oylik)", platform: "Zavod", fee: 0 },
-    { name: "Kuryerlik xizmati", platform: "Yetkazib berish", fee: 0 },
-    { name: "Taksi / Haydovchilik", platform: "Transport", fee: 12 },
-    { name: "Shaxsiy Mijoz (To'g'ridan-to'g'ri)", platform: "Shaxsiy", fee: 0 },
+    { name: "Kunlik ish (Obekt / Smena)", platform: "Kunlik ish", fee: 0, hourly: 10320, daily: 120000 },
+    { name: "Zavod / Fabrika (Smena)", platform: "Zavod", fee: 0, hourly: 10320, daily: 120000 },
+    { name: "Kuryerlik xizmati", platform: "Yetkazib berish", fee: 0, hourly: 11000, daily: 130000 },
+    { name: "Taksi / Haydovchilik", platform: "Transport", fee: 12, hourly: 12000, daily: 140000 },
+    { name: "Shaxsiy Mijoz (Obekt)", platform: "Shaxsiy", fee: 0, hourly: 15000, daily: 150000 },
   ];
 
   // Quick Category Presets
@@ -67,11 +68,20 @@ export function SettingsView({ clients, categories, onRefresh }: SettingsViewPro
     { name: "Komissiya & Xizmat haqi", type: "EXPENSE" as const },
   ];
 
-  const handleAddClient = async (name: string, platformType: string, feeRate: number) => {
-    if (!name.trim()) return;
+  const colorOptions = ["#6366f1", "#10b981", "#f59e0b", "#ec4899", "#8b5cf6", "#06b6d4", "#f43f5e"];
+
+  const handleAddClient = async (
+    name: string,
+    platformType: string = "Workplace",
+    feeRate: number = 0,
+    hourly: number = 10320,
+    daily: number = 120000
+  ) => {
+    if (!name || !name.trim()) return;
     setLoading(true);
     try {
       hapticFeedback("light");
+      const randomColor = colorOptions[Math.floor(Math.random() * colorOptions.length)];
       const res = await fetch("/api/clients", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -79,6 +89,9 @@ export function SettingsView({ clients, categories, onRefresh }: SettingsViewPro
           name: name.trim(),
           platform: platformType,
           defaultFeeRate: feeRate,
+          defaultHourlyRate: hourly,
+          defaultDailyRate: daily,
+          color: randomColor,
         }),
       });
       if (res.ok) {
@@ -110,7 +123,7 @@ export function SettingsView({ clients, categories, onRefresh }: SettingsViewPro
   };
 
   const handleAddCategory = async (name: string, type: "EXPENSE" | "INCOME") => {
-    if (!name.trim()) return;
+    if (!name || !name.trim()) return;
     setLoading(true);
     try {
       hapticFeedback("light");
@@ -152,31 +165,35 @@ export function SettingsView({ clients, categories, onRefresh }: SettingsViewPro
   const handleCustomCurrencySubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (customCurrency.trim()) {
-      setCurrency(customCurrency.trim().toUpperCase());
+      const code = customCurrency.trim().toUpperCase();
+      setCurrency(code);
+      if (!currencyPresets.some((c) => c.code === code)) {
+        setCurrencyPresets((prev) => [...prev, { code, symbol: code, label: `${code} (${code})` }]);
+      }
       setCustomCurrency("");
       hapticFeedback("success");
     }
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-in fade-in duration-200">
       {/* Page Header */}
-      <div className="bg-card border border-border rounded-2xl p-5 flex items-center justify-between">
+      <div className="bg-card border border-border rounded-3xl p-5 flex items-center justify-between shadow-sm">
         <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 rounded-xl bg-indigo-500/10 text-indigo-500 flex items-center justify-center">
+          <div className="w-10 h-10 rounded-2xl bg-indigo-500/10 text-indigo-500 flex items-center justify-center">
             <Settings className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="text-base sm:text-lg font-bold text-foreground">Sozlamalar va Moslashtirish</h2>
+            <h2 className="text-base sm:text-lg font-black text-foreground">Sozlamalar va Moslashtirish</h2>
             <p className="text-xs text-gray-500 dark:text-gray-400">
-              Valyuta, ish turlari (kunlik ish, smena) va toifalarni o'zingizga moslang
+              Valyuta, ish joylari (Zavod, Emart, Obekt) va toifalarni boshqarish
             </p>
           </div>
         </div>
       </div>
 
       {/* 1. Currency Settings */}
-      <div className="bg-card border border-border rounded-2xl p-5 space-y-4">
+      <div className="bg-card border border-border rounded-3xl p-5 sm:p-6 space-y-4 shadow-sm">
         <div className="flex items-center space-x-2.5">
           <Coins className="w-5 h-5 text-amber-500" />
           <h3 className="font-bold text-sm sm:text-base text-foreground">Asosiy Valyutani Tanlash</h3>
@@ -190,14 +207,14 @@ export function SettingsView({ clients, categories, onRefresh }: SettingsViewPro
                 setCurrency(c.code);
                 hapticFeedback("light");
               }}
-              className={`flex items-center justify-between p-3 rounded-xl border text-xs font-bold transition-all ${
+              className={`flex items-center justify-between p-3.5 rounded-2xl border text-xs font-bold transition-all ${
                 currency === c.code
-                  ? "bg-indigo-600/10 border-indigo-600 text-indigo-600 dark:text-indigo-400 shadow-sm"
-                  : "bg-gray-50 dark:bg-gray-900 border-border text-gray-700 dark:text-gray-300 hover:border-gray-400"
+                  ? "bg-indigo-600 text-white border-indigo-600 shadow-md shadow-indigo-600/20"
+                  : "bg-gray-50 dark:bg-gray-900 border-border text-foreground hover:border-gray-400"
               }`}
             >
               <span>{c.label}</span>
-              {currency === c.code && <Check className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />}
+              {currency === c.code && <Check className="w-4 h-4 text-white" />}
             </button>
           ))}
         </div>
@@ -208,12 +225,12 @@ export function SettingsView({ clients, categories, onRefresh }: SettingsViewPro
             type="text"
             value={customCurrency}
             onChange={(e) => setCustomCurrency(e.target.value)}
-            placeholder="Boshqa valyuta kodi (masalan: JPY, GBP, CAD)..."
-            className="flex-1 px-3 py-2 text-xs rounded-xl bg-gray-50 dark:bg-gray-900 border border-border focus:outline-none focus:ring-1 focus:ring-indigo-500 text-foreground"
+            placeholder="Boshqa valyuta kodi (masalan: JPY, GBP, CAD, TRY)..."
+            className="flex-1 px-3.5 py-2.5 text-xs rounded-xl bg-gray-50 dark:bg-gray-900 border border-border focus:outline-none focus:ring-1 focus:ring-indigo-500 text-foreground font-semibold"
           />
           <button
             type="submit"
-            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl transition-colors"
+            className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl transition-colors shadow-sm"
           >
             O'rnatish
           </button>
@@ -221,23 +238,21 @@ export function SettingsView({ clients, categories, onRefresh }: SettingsViewPro
       </div>
 
       {/* 2. Platforms & Gig Sources */}
-      <div className="bg-card border border-border rounded-2xl p-5 space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2.5">
-            <Briefcase className="w-5 h-5 text-indigo-500" />
-            <div>
-              <h3 className="font-bold text-sm sm:text-base text-foreground">Ish Manbalari va Platformalar</h3>
-              <p className="text-xs text-gray-500 dark:text-gray-400">
-                Kunlik ish, smena, zavod, kuryerlik yoki shaxsiy mijozlarni qo'shing
-              </p>
-            </div>
+      <div className="bg-card border border-border rounded-3xl p-5 sm:p-6 space-y-4 shadow-sm">
+        <div className="flex items-center space-x-2.5">
+          <Briefcase className="w-5 h-5 text-indigo-500" />
+          <div>
+            <h3 className="font-bold text-sm sm:text-base text-foreground">Ish Joylari va Obektlar (Workplaces)</h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              Yekaterina, Emart, Zavod yoki yangi obektlarni qo'shing va boshqaring
+            </p>
           </div>
         </div>
 
         {/* Quick Presets */}
         <div className="space-y-1.5">
           <span className="text-xs font-semibold text-gray-400 flex items-center gap-1">
-            <Sparkles className="w-3.5 h-3.5 text-amber-500" /> Tezkor tavsiya etilgan ish turlari (bir bosishda qo'shish):
+            <Sparkles className="w-3.5 h-3.5 text-amber-500" /> Bir bosishda qo'shish:
           </span>
           <div className="flex flex-wrap gap-1.5 pt-1">
             {platformPresets.map((p, idx) => {
@@ -246,8 +261,8 @@ export function SettingsView({ clients, categories, onRefresh }: SettingsViewPro
                 <button
                   key={idx}
                   disabled={alreadyAdded}
-                  onClick={() => handleAddClient(p.name, p.platform, p.fee)}
-                  className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border flex items-center space-x-1.5 transition-all ${
+                  onClick={() => handleAddClient(p.name, p.platform, p.fee, p.hourly, p.daily)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold border flex items-center space-x-1.5 transition-all ${
                     alreadyAdded
                       ? "opacity-50 cursor-not-allowed bg-gray-100 dark:bg-gray-800 border-border text-gray-400"
                       : "bg-indigo-50 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-300 hover:bg-indigo-100"
@@ -262,27 +277,27 @@ export function SettingsView({ clients, categories, onRefresh }: SettingsViewPro
         </div>
 
         {/* Add custom form */}
-        <div className="p-3.5 rounded-xl bg-gray-50 dark:bg-gray-900 border border-border grid grid-cols-1 sm:grid-cols-4 gap-2">
+        <div className="p-4 rounded-2xl bg-gray-50 dark:bg-gray-900 border border-border grid grid-cols-1 sm:grid-cols-4 gap-2.5">
           <input
             type="text"
             value={newClientName}
             onChange={(e) => setNewClientName(e.target.value)}
-            placeholder="Yangi ish manbai (masalan: 12-Obekt gipsokarton)"
-            className="sm:col-span-2 px-3 py-2 text-xs rounded-lg bg-card border border-border text-foreground focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            placeholder="Yangi ish joyi nomi (masalan: 12-Obekt)..."
+            className="sm:col-span-2 px-3.5 py-2.5 text-xs rounded-xl bg-card border border-border text-foreground font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500"
           />
           <input
             type="number"
-            value={newClientFee}
-            onChange={(e) => setNewClientFee(e.target.value)}
-            placeholder="Komissiya % (0)"
-            className="px-3 py-2 text-xs rounded-lg bg-card border border-border text-foreground focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            value={newClientHourly}
+            onChange={(e) => setNewClientHourly(e.target.value)}
+            placeholder="Soatlik stavka (10320)"
+            className="px-3.5 py-2.5 text-xs rounded-xl bg-card border border-border text-foreground font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500"
           />
           <button
-            onClick={() => handleAddClient(newClientName, newClientType, parseFloat(newClientFee) || 0)}
+            onClick={() => handleAddClient(newClientName, newClientPlatform, parseFloat(newClientFee) || 0, parseFloat(newClientHourly) || 10320, parseFloat(newClientDaily) || 120000)}
             disabled={loading || !newClientName.trim()}
-            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs rounded-lg transition-colors flex items-center justify-center space-x-1"
+            className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl transition-colors flex items-center justify-center space-x-1 shadow-sm"
           >
-            <Plus className="w-3.5 h-3.5" />
+            <Plus className="w-4 h-4" />
             <span>Qo'shish</span>
           </button>
         </div>
@@ -292,20 +307,26 @@ export function SettingsView({ clients, categories, onRefresh }: SettingsViewPro
           {clients.map((c) => (
             <div
               key={c.id}
-              className="flex items-center justify-between p-3 rounded-xl bg-gray-50 dark:bg-gray-900/60 border border-border"
+              className="flex items-center justify-between p-3.5 rounded-2xl bg-gray-50 dark:bg-gray-900/60 border border-border"
             >
-              <div>
-                <p className="font-bold text-xs text-foreground">{c.name}</p>
-                <p className="text-[11px] text-gray-400">
-                  {c.defaultFeeRate > 0 ? `${c.defaultFeeRate}% komissiya` : "Komissiyasiz (0%)"}
-                </p>
+              <div className="flex items-center space-x-2.5">
+                <span
+                  className="w-3 h-3 rounded-full flex-shrink-0"
+                  style={{ backgroundColor: c.color || "#6366f1" }}
+                />
+                <div>
+                  <p className="font-bold text-xs sm:text-sm text-foreground">{c.name}</p>
+                  <p className="text-[11px] text-gray-400">
+                    {c.defaultHourlyRate ? `${c.defaultHourlyRate.toLocaleString()} ₩/soat` : "Kunlik smena"}
+                  </p>
+                </div>
               </div>
               <button
                 onClick={() => handleDeleteClient(c.id)}
                 className="p-1.5 text-gray-400 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-colors"
                 title="O'chirish"
               >
-                <Trash2 className="w-3.5 h-3.5" />
+                <Trash2 className="w-4 h-4" />
               </button>
             </div>
           ))}
@@ -313,7 +334,7 @@ export function SettingsView({ clients, categories, onRefresh }: SettingsViewPro
       </div>
 
       {/* 3. Categories Customization */}
-      <div className="bg-card border border-border rounded-2xl p-5 space-y-4">
+      <div className="bg-card border border-border rounded-3xl p-5 sm:p-6 space-y-4 shadow-sm">
         <div className="flex items-center space-x-2.5">
           <Layers className="w-5 h-5 text-emerald-500" />
           <div>
@@ -327,7 +348,7 @@ export function SettingsView({ clients, categories, onRefresh }: SettingsViewPro
         {/* Quick Category Presets */}
         <div className="space-y-1.5">
           <span className="text-xs font-semibold text-gray-400 flex items-center gap-1">
-            <Zap className="w-3.5 h-3.5 text-emerald-500" /> Tezkor toifalar (bir bosishda qo'shish):
+            <Zap className="w-3.5 h-3.5 text-emerald-500" /> Bir bosishda qo'shish:
           </span>
           <div className="flex flex-wrap gap-1.5 pt-1">
             {categoryPresets.map((cat, idx) => {
@@ -337,7 +358,7 @@ export function SettingsView({ clients, categories, onRefresh }: SettingsViewPro
                   key={idx}
                   disabled={alreadyAdded}
                   onClick={() => handleAddCategory(cat.name, cat.type)}
-                  className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border flex items-center space-x-1.5 transition-all ${
+                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold border flex items-center space-x-1.5 transition-all ${
                     alreadyAdded
                       ? "opacity-50 cursor-not-allowed bg-gray-100 dark:bg-gray-800 border-border text-gray-400"
                       : "bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-300 hover:bg-emerald-100"
@@ -352,18 +373,18 @@ export function SettingsView({ clients, categories, onRefresh }: SettingsViewPro
         </div>
 
         {/* Add custom form */}
-        <div className="p-3.5 rounded-xl bg-gray-50 dark:bg-gray-900 border border-border flex flex-col sm:flex-row gap-2">
+        <div className="p-4 rounded-2xl bg-gray-50 dark:bg-gray-900 border border-border flex flex-col sm:flex-row gap-2.5">
           <input
             type="text"
             value={newCatName}
             onChange={(e) => setNewCatName(e.target.value)}
             placeholder="Yangi kategoriya nomi..."
-            className="flex-1 px-3 py-2 text-xs rounded-lg bg-card border border-border text-foreground focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            className="flex-1 px-3.5 py-2.5 text-xs rounded-xl bg-card border border-border text-foreground font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500"
           />
           <select
             value={newCatType}
             onChange={(e) => setNewCatType(e.target.value as any)}
-            className="px-3 py-2 text-xs rounded-lg bg-card border border-border text-foreground font-semibold"
+            className="px-3.5 py-2.5 text-xs rounded-xl bg-card border border-border text-foreground font-bold"
           >
             <option value="EXPENSE">🔴 Chiqim (Xarajat)</option>
             <option value="INCOME">🟢 Kirim (Daromad)</option>
@@ -371,9 +392,9 @@ export function SettingsView({ clients, categories, onRefresh }: SettingsViewPro
           <button
             onClick={() => handleAddCategory(newCatName, newCatType)}
             disabled={loading || !newCatName.trim()}
-            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs rounded-lg transition-colors flex items-center justify-center space-x-1"
+            className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl transition-colors flex items-center justify-center space-x-1 shadow-sm"
           >
-            <Plus className="w-3.5 h-3.5" />
+            <Plus className="w-4 h-4" />
             <span>Qo'shish</span>
           </button>
         </div>
@@ -383,11 +404,11 @@ export function SettingsView({ clients, categories, onRefresh }: SettingsViewPro
           {categories.map((c) => (
             <div
               key={c.id}
-              className="flex items-center justify-between p-3 rounded-xl bg-gray-50 dark:bg-gray-900/60 border border-border"
+              className="flex items-center justify-between p-3.5 rounded-2xl bg-gray-50 dark:bg-gray-900/60 border border-border"
             >
               <div className="flex items-center space-x-2">
                 <span
-                  className={`w-2 h-2 rounded-full ${
+                  className={`w-2.5 h-2.5 rounded-full ${
                     c.type === "INCOME" ? "bg-emerald-500" : "bg-rose-500"
                   }`}
                 />

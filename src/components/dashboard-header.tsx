@@ -1,115 +1,93 @@
 "use client";
 
-import React, { useState } from "react";
+import React from "react";
 import { useTelegram } from "./telegram-provider";
-import { Wallet, Sun, Moon, Send, ChevronDown, Check } from "lucide-react";
-import { TelegramGuideModal } from "./telegram-guide-modal";
+import { User, Sun, Moon, Settings, Receipt } from "lucide-react";
 
-export function DashboardHeader() {
-  const { isTelegram, user, currency, setCurrency, theme, toggleTheme, hapticFeedback } = useTelegram();
-  const [currencyOpen, setCurrencyOpen] = useState(false);
-  const [guideOpen, setGuideOpen] = useState(false);
+interface DashboardHeaderProps {
+  onOpenSettings?: () => void;
+  onOpenHistory?: () => void;
+}
 
-  const currencies = [
-    { code: "KRW", symbol: "₩", label: "KRW (₩ Koreya Voni)" },
-    { code: "UZS", symbol: "so'm", label: "UZS (so'm)" },
-    { code: "USD", symbol: "$", label: "USD ($ Dollar)" },
-    { code: "EUR", symbol: "€", label: "EUR (€ Evro)" },
-    { code: "RUB", symbol: "₽", label: "RUB (₽ Rubl)" },
-  ];
+export function DashboardHeader({ onOpenSettings, onOpenHistory }: DashboardHeaderProps) {
+  const { isTelegram, user, theme, toggleTheme, hapticFeedback } = useTelegram();
+
+  const displayName = user ? user.first_name : "Sardor";
+  const userInitial = displayName.charAt(0).toUpperCase();
 
   return (
-    <>
-      <header className="sticky top-0 z-30 bg-card/80 backdrop-blur-md border-b border-border px-4 py-3 sm:px-6">
-        <div className="max-w-6xl mx-auto flex items-center justify-between">
-          {/* Logo & User info */}
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-indigo-400 flex items-center justify-center text-white shadow-md shadow-indigo-500/20">
-              <Wallet className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center space-x-2">
-                <h1 className="font-bold text-base sm:text-lg tracking-tight">Gig Tracker</h1>
-                {isTelegram ? (
-                  <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-500 border border-blue-500/20">
-                    Telegram App
-                  </span>
-                ) : (
-                  <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
-                    Web App
-                  </span>
-                )}
-              </div>
-              <p className="text-xs text-muted-foreground text-gray-500 dark:text-gray-400">
-                {user ? `Xush kelibsiz, ${user.first_name}` : "Frilanser & Gig Moliya Boshqaruvi"}
-              </p>
-            </div>
+    <header className="sticky top-0 z-30 bg-card/90 backdrop-blur-md border-b border-border px-3.5 py-2.5 sm:px-6">
+      <div className="max-w-6xl mx-auto flex items-center justify-between">
+        {/* Left: Circular Avatar & Profile info */}
+        <div className="flex items-center space-x-2.5">
+          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-gradient-to-tr from-indigo-600 via-indigo-500 to-emerald-400 flex items-center justify-center text-white font-black text-sm shadow-md shadow-indigo-500/20 flex-shrink-0 ring-2 ring-indigo-500/30">
+            {user ? userInitial : <User className="w-4 h-4" />}
           </div>
+          <div>
+            <div className="flex items-center space-x-1.5">
+              <h1 className="font-bold text-sm sm:text-base tracking-tight text-foreground">{displayName}</h1>
+              {isTelegram ? (
+                <span className="text-[9px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded-full bg-blue-500/10 text-blue-500 border border-blue-500/20">
+                  Telegram
+                </span>
+              ) : (
+                <span className="text-[9px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
+                  Pro
+                </span>
+              )}
+            </div>
+            <p className="text-[11px] text-gray-500 dark:text-gray-400">
+              Gig & Shift Tracker
+            </p>
+          </div>
+        </div>
 
-          {/* Controls */}
-          <div className="flex items-center space-x-2 sm:space-x-3">
-            {/* Telegram Bot connection button */}
+        {/* Right: Quick Action Controls (Tarix, Sozlamalar, Mavzu) */}
+        <div className="flex items-center space-x-1.5 sm:space-x-2">
+          {/* Tarix (History) button */}
+          {onOpenHistory && (
             <button
               onClick={() => {
                 hapticFeedback("light");
-                setGuideOpen(true);
+                onOpenHistory();
               }}
-              className="flex items-center space-x-1.5 text-xs font-medium px-2.5 py-1.5 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400 hover:bg-blue-500/20 transition-colors border border-blue-500/20"
-              title="Telegram Bot bilan bog'lash"
+              className="flex items-center space-x-1 px-2.5 py-1.5 rounded-xl bg-gray-100 dark:bg-gray-800/80 hover:bg-gray-200 dark:hover:bg-gray-700 text-foreground font-bold text-xs transition-colors border border-border"
+              title="Tranzaksiyalar Tarixi"
             >
-              <Send className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Bot bilan ulash</span>
+              <Receipt className="w-3.5 h-3.5 text-indigo-500" />
+              <span className="hidden sm:inline">Tarix</span>
             </button>
+          )}
 
-            {/* Currency selector dropdown */}
-            <div className="relative">
-              <button
-                onClick={() => {
-                  hapticFeedback("light");
-                  setCurrencyOpen(!currencyOpen);
-                }}
-                className="flex items-center space-x-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors border border-border"
-              >
-                <span>{currency}</span>
-                <ChevronDown className="w-3.5 h-3.5 text-gray-500" />
-              </button>
-
-              {currencyOpen && (
-                <div className="absolute right-0 mt-1 w-32 rounded-xl bg-card border border-border shadow-xl py-1 z-50 animate-in fade-in zoom-in-95">
-                  {currencies.map((c) => (
-                    <button
-                      key={c.code}
-                      onClick={() => {
-                        setCurrency(c.code);
-                        setCurrencyOpen(false);
-                        hapticFeedback("light");
-                      }}
-                      className="w-full text-left px-3 py-1.5 text-xs flex items-center justify-between hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-                    >
-                      <span className={currency === c.code ? "font-bold text-indigo-500" : ""}>
-                        {c.label}
-                      </span>
-                      {currency === c.code && <Check className="w-3.5 h-3.5 text-indigo-500" />}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Dark / Light Toggle */}
+          {/* Sozlamalar (Settings) button */}
+          {onOpenSettings && (
             <button
-              onClick={toggleTheme}
-              className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 dark:text-gray-400 transition-colors"
-              title="Mavzuni almashtirish"
+              onClick={() => {
+                hapticFeedback("light");
+                onOpenSettings();
+              }}
+              className="flex items-center space-x-1 px-2.5 py-1.5 rounded-xl bg-gray-100 dark:bg-gray-800/80 hover:bg-gray-200 dark:hover:bg-gray-700 text-foreground font-bold text-xs transition-colors border border-border"
+              title="Sozlamalar"
             >
-              {theme === "dark" ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-slate-700" />}
+              <Settings className="w-3.5 h-3.5 text-indigo-500" />
+              <span className="hidden sm:inline">Sozlamalar</span>
             </button>
-          </div>
-        </div>
-      </header>
+          )}
 
-      {/* Guide Modal */}
-      {guideOpen && <TelegramGuideModal onClose={() => setGuideOpen(false)} />}
-    </>
+          {/* Dark / Light Toggle */}
+          <button
+            onClick={toggleTheme}
+            className="p-2 rounded-xl text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 dark:text-gray-400 transition-colors border border-border"
+            title="Mavzuni almashtirish"
+          >
+            {theme === "dark" ? (
+              <Sun className="w-4 h-4 text-amber-400" />
+            ) : (
+              <Moon className="w-4 h-4 text-slate-700" />
+            )}
+          </button>
+        </div>
+      </div>
+    </header>
   );
 }

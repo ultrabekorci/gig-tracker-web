@@ -314,11 +314,20 @@ export function RegisterWorkModal({
               onChange={(e) => handleClientSelect(e.target.value)}
               className="w-full px-3.5 py-2.5 text-xs font-bold rounded-xl bg-gray-50 dark:bg-gray-900 border border-border focus:outline-none focus:ring-1 focus:ring-indigo-500 text-foreground"
             >
-              {clients.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
+              {clients.length > 0 ? (
+                clients.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    ● {c.name}
+                  </option>
+                ))
+              ) : (
+                <>
+                  <option value="client-yekaterina">● Yekaterina</option>
+                  <option value="client-emart">● Emart</option>
+                  <option value="client-xasanboy">● Xasanboy aka</option>
+                  <option value="client-daily">● Kunlik ish (Obekt)</option>
+                </>
+              )}
             </select>
           </div>
 

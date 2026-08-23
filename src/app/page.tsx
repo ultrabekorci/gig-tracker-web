@@ -109,11 +109,20 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-background pb-24 sm:pb-12">
-      {/* Header */}
-      <DashboardHeader />
+      {/* Header with Profile circle & quick links to Sozlamalar & Tarix */}
+      <DashboardHeader
+        onOpenSettings={() => {
+          setActiveTab("settings");
+          hapticFeedback("light");
+        }}
+        onOpenHistory={() => {
+          setActiveTab("transactions");
+          hapticFeedback("light");
+        }}
+      />
 
       {/* Main Container */}
-      <main className="max-w-6xl mx-auto px-3.5 sm:px-6 pt-5 space-y-5">
+      <main className="max-w-6xl mx-auto px-3.5 sm:px-6 pt-4 space-y-4">
         {/* Top Metric Cards */}
         <StatsCards stats={stats} />
 
