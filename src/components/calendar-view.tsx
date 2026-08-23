@@ -21,7 +21,7 @@ interface CalendarViewProps {
 
 export function CalendarView({ transactions, onSelectDate, onRefresh }: CalendarViewProps) {
   const { currency, hapticFeedback } = useTelegram();
-  const [currentDate, setCurrentDate] = useState(new Date(2026, 7, 24)); // August 2026 as per user mockups
+  const [currentDate, setCurrentDate] = useState(new Date());
   const [workView, setWorkView] = useState<"WORKPLACE" | "TIME" | "CLOCK_IN">("WORKPLACE");
 
   const year = currentDate.getFullYear();

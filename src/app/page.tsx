@@ -130,18 +130,21 @@ export default function Home() {
         }}
       />
 
+
       {/* Main Container */}
       <main className="max-w-6xl mx-auto px-3.5 sm:px-6 pt-4 space-y-4">
-        {/* Top Metric Cards */}
-        <StatsCards stats={stats} transactions={transactions} />
-
-        {/* Goal Progress */}
-        <GoalProgress
-          targetAmount={goal.target}
-          currentAmount={stats ? stats.takeHomePay : goal.current}
-          title={goal.title}
-          onUpdateGoal={handleUpdateGoal}
-        />
+        {/* Top Metric Cards & Goal — only on Calendar (home) tab */}
+        {activeTab === "calendar" && (
+          <>
+            <StatsCards stats={stats} transactions={transactions} />
+            <GoalProgress
+              targetAmount={goal.target}
+              currentAmount={stats ? stats.takeHomePay : goal.current}
+              title={goal.title}
+              onUpdateGoal={handleUpdateGoal}
+            />
+          </>
+        )}
 
         {/* Navigation Tabs Bar */}
         <div className="hidden sm:flex items-center justify-between border-b border-border pb-2 overflow-x-auto">

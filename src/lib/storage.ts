@@ -268,9 +268,10 @@ export function calculateLocalStats(transactions: Transaction[], currency: strin
   const platformMap = new Map<string, { amount: number; hours: number; shifts: number; color: string }>();
   const categoryMap = new Map<string, number>();
 
-  const currentYear = 2026;
-  const currentMonth = 7; // August (0-indexed)
-  const currMonthKey = "2026-08";
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth(); // 0-indexed
+  const currMonthKey = `${currentYear}-${String(currentMonth + 1).padStart(2, "0")}`;
 
   // 12 Months Map
   const monthsData: { [key: string]: { name: string; income: number; expense: number; profit: number; hours: number } } = {};
@@ -359,8 +360,8 @@ export function calculateLocalStats(transactions: Transaction[], currency: strin
     pendingCount,
     totalWorkedDays: workedDaysSet.size,
     totalWorkedHours: Math.round(totalWorkedHours),
-    currentMonthName: "Aug 2026",
-    prevMonthDiffPercentage: -56.5,
+    currentMonthName: now.toLocaleDateString("en-US", { month: "short", year: "numeric" }),
+    prevMonthDiffPercentage: 0,
     monthlyTrend,
     platformBreakdown: sortedPlatforms.map((p) => ({
       name: p.name,
