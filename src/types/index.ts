@@ -140,4 +140,6 @@ export interface DashboardStats {
     amount: number;
     percentage: number;
   }[];
+  currency?: string;
+  taxRate?: number;
 }
