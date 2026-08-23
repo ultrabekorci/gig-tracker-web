@@ -53,12 +53,22 @@ export async function GET(request: Request) {
     }
 
     const infoRes = await fetch(`https://api.telegram.org/bot${token}/getWebhookInfo`);
+    const info = await infoRes.json();
+    const appUrl = appUrlFrom(request);
+
     return NextResponse.json({
       ok: true,
       webhookUrl,
+      registeredUrl: info?.result?.url || null,
+      registered: Boolean(info?.result?.url),
+      lastError: info?.result?.last_error_message || null,
+      pendingUpdates: info?.result?.pending_update_count ?? null,
+      appUrl,
+      miniAppButtons: appUrl.startsWith("https://"),
+      secretRequired: Boolean(process.env.TELEGRAM_WEBHOOK_SECRET),
       mode: isDatabaseConfigured() ? "database" : "mini-app",
       speechToText: speechProviderLabel(),
-      webhookInfo: await infoRes.json(),
+      webhookInfo: info,
     });
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: e.message }, { status: 500 });
@@ -86,15 +96,39 @@ export async function POST(request: Request) {
     const chatId = message.chat.id;
     const sender = message.from;
 
-    const sendMessage = async (msgText: string, replyMarkup?: any) => {
-      await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+    const post = async (payload: any) => {
+      const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ chat_id: chatId, text: msgText, parse_mode: "HTML", reply_markup: replyMarkup }),
+        body: JSON.stringify(payload),
       });
+      return res.json().catch(() => null);
     };
 
-    const appButton = { inline_keyboard: [[{ text: "🚀 Gig Tracker", web_app: { url: appUrl } }]] };
+    /**
+     * Telegram silently drops a message it does not like (bad HTML, a web_app
+     * URL that is not https, ...). Without a retry the user just sees nothing,
+     * so a rejected message is logged and resent as plain text.
+     */
+    const sendMessage = async (msgText: string, replyMarkup?: any) => {
+      const result = await post({
+        chat_id: chatId,
+        text: msgText,
+        parse_mode: "HTML",
+        reply_markup: replyMarkup,
+      });
+      if (result?.ok) return;
+
+      console.error("Telegram sendMessage rad etdi:", result?.description || "noma'lum xato");
+      await post({ chat_id: chatId, text: msgText.replace(/<[^>]+>/g, "") });
+    };
+
+    // Telegram only accepts https URLs in web_app buttons; attaching an invalid
+    // one makes the whole message fail.
+    const canOpenMiniApp = appUrl.startsWith("https://");
+    const appButton = canOpenMiniApp
+      ? { inline_keyboard: [[{ text: "🚀 Gig Tracker", web_app: { url: appUrl } }]] }
+      : undefined;
 
     let text: string = message.text || "";
     let fromVoice = false;
@@ -183,9 +217,12 @@ export async function POST(request: Request) {
       );
     } else {
       // Mini App mode: the data lives on the device, so hand over a deep link.
-      await sendMessage(buildConfirmMessage(entry, process.env.DEFAULT_CURRENCY || "KRW"), {
-        inline_keyboard: [[{ text: "📥 Ilovada Saqlash", web_app: { url: buildDeepLink(appUrl, entry) } }]],
-      });
+      await sendMessage(
+        buildConfirmMessage(entry, process.env.DEFAULT_CURRENCY || "KRW"),
+        canOpenMiniApp
+          ? { inline_keyboard: [[{ text: "📥 Ilovada Saqlash", web_app: { url: buildDeepLink(appUrl, entry) } }]] }
+          : undefined
+      );
     }
 
     return NextResponse.json({ ok: true });
