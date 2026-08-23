@@ -14,7 +14,8 @@ import {
   deleteLocalTransaction,
   calculateLocalStats,
 } from "@/lib/storage";
-import { toDateKey } from "@/lib/utils";
+import { toDateKey, parseDateKey } from "@/lib/utils";
+import { matchWorkplace } from "@/lib/workplace-match";
 import { DashboardHeader } from "@/components/dashboard-header";
 import { StatsCards } from "@/components/stats-cards";
 import { GoalProgress } from "@/components/goal-progress";
@@ -106,22 +107,34 @@ export default function Home() {
         const type = urlParams.get("type") as "INCOME" | "EXPENSE" || "INCOME";
         const amount = parseFloat(urlParams.get("amount") || "0");
         const desc = urlParams.get("desc") || "";
-        
+        const dateParam = urlParams.get("date");
+
         if (amount > 0) {
+          // The bot cannot know the workplaces — they live on this device — so
+          // the match happens here, against what the message mentioned
+          // ("Yekaterinada" -> Yekaterina).
+          const workplace = matchWorkplace(desc, getLocalWorkplaces());
+
           const newTx: Partial<Transaction> = {
             type,
             amount,
-            description: desc,
-            date: new Date().toISOString(),
+            description: desc || workplace?.name || null,
+            date: (dateParam ? parseDateKey(dateParam) : new Date()).toISOString(),
             status: "PAID",
             workType: type === "INCOME" ? "DAILY_WAGE" : undefined,
+            clientId: workplace?.id || null,
+            color: workplace?.color || undefined,
             currency
           };
           // Save and instantly sync
           applyTransactions(saveLocalTransaction(newTx));
           
           if (hapticFeedback) hapticFeedback("success");
-          alert("Muvaffaqiyatli saqlandi!");
+          alert(
+            workplace
+              ? `Saqlandi: ${workplace.name}`
+              : "Muvaffaqiyatli saqlandi!"
+          );
           
           // Clear URL
           window.history.replaceState({}, document.title, window.location.pathname);
