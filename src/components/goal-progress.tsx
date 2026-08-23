@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { formatCurrency } from "@/lib/utils";
 import { useTelegram } from "./telegram-provider";
 import { Target, Sparkles, Check } from "lucide-react";
@@ -20,7 +20,13 @@ export function GoalProgress({
   const [isEditing, setIsEditing] = useState(false);
   const [newTarget, setNewTarget] = useState(targetAmount.toString());
 
-  const percentage = Math.min(100, Math.round((currentAmount / targetAmount) * 100)) || 0;
+  // Keep the input in sync when the stored goal is loaded/changed elsewhere.
+  useEffect(() => {
+    setNewTarget(targetAmount.toString());
+  }, [targetAmount]);
+
+  const percentage =
+    targetAmount > 0 ? Math.min(100, Math.round((currentAmount / targetAmount) * 100)) || 0 : 0;
   const remaining = Math.max(0, targetAmount - currentAmount);
 
   const handleSave = () => {

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { DashboardStats, Transaction, Category, Client } from "@/types";
 import {
   getLocalWorkplaces,
@@ -14,6 +14,7 @@ import {
   deleteLocalTransaction,
   calculateLocalStats,
 } from "@/lib/storage";
+import { toDateKey } from "@/lib/utils";
 import { DashboardHeader } from "@/components/dashboard-header";
 import { StatsCards } from "@/components/stats-cards";
 import { GoalProgress } from "@/components/goal-progress";
@@ -37,6 +38,8 @@ import {
   Settings,
 } from "lucide-react";
 
+const GOAL_KEY = "gig_tracker_goal_v3";
+
 export default function Home() {
   const { currency, hapticFeedback } = useTelegram();
   const [stats, setStats] = useState<DashboardStats | null>(null);
@@ -44,6 +47,22 @@ export default function Home() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [goal, setGoal] = useState({ target: 2500000, current: 1553656, title: "Oylik Ish Haqi Maqsadi" });
+  const deepLinkHandled = useRef(false);
+
+  // Restore the saved goal target — it used to reset on every reload.
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(GOAL_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed.target === "number" && parsed.target > 0) {
+          setGoal((prev) => ({ ...prev, ...parsed }));
+        }
+      }
+    } catch {
+      /* ignore malformed goal */
+    }
+  }, []);
 
   const [activeTab, setActiveTab] = useState<"calendar" | "salary" | "analysis" | "transactions" | "invoices" | "settings">("calendar");
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -55,7 +74,7 @@ export default function Home() {
     const localWp = getLocalWorkplaces();
     const localCats = getLocalCategories();
     const localTxs = getLocalTransactions();
-    const localSt = calculateLocalStats(localTxs, currency);
+    const localSt = calculateLocalStats(localTxs, currency, localCats);
 
     setClients(localWp);
     setCategories(localCats);
@@ -67,9 +86,20 @@ export default function Home() {
     syncFromStorage();
   }, [syncFromStorage]);
 
+  // Recompute the dashboard from a freshly saved list (categories included, so
+  // the expense breakdown stays in sync).
+  const applyTransactions = useCallback(
+    (list: Transaction[]) => {
+      setTransactions(list);
+      setStats(calculateLocalStats(list, currency, getLocalCategories()));
+    },
+    [currency]
+  );
+
   // Handle Deep Links from Telegram Bot
   useEffect(() => {
-    if (typeof window !== "undefined") {
+    if (typeof window !== "undefined" && !deepLinkHandled.current) {
+      deepLinkHandled.current = true;
       const urlParams = new URLSearchParams(window.location.search);
       const action = urlParams.get("action");
       if (action === "add") {
@@ -88,9 +118,7 @@ export default function Home() {
             currency
           };
           // Save and instantly sync
-          const updatedList = saveLocalTransaction(newTx);
-          setTransactions(updatedList);
-          setStats(calculateLocalStats(updatedList, currency));
+          applyTransactions(saveLocalTransaction(newTx));
           
           if (hapticFeedback) hapticFeedback("success");
           alert("Muvaffaqiyatli saqlandi!");
@@ -100,19 +128,26 @@ export default function Home() {
         }
       }
     }
-  }, [currency, hapticFeedback]);
+  }, [currency, hapticFeedback, applyTransactions]);
 
   // Transaction CRUD Handlers (Instant State + Storage Update)
   const handleAddOrEditTransaction = (txData: Partial<Transaction>) => {
-    const updatedList = saveLocalTransaction(txData);
-    setTransactions(updatedList);
-    setStats(calculateLocalStats(updatedList, currency));
+    applyTransactions(saveLocalTransaction(txData));
   };
 
   const handleDeleteTransaction = (id: string) => {
-    const updatedList = deleteLocalTransaction(id);
-    setTransactions(updatedList);
-    setStats(calculateLocalStats(updatedList, currency));
+    applyTransactions(deleteLocalTransaction(id));
+  };
+
+  // Marking an invoice as paid has to update local storage — the API route
+  // needs a database that the offline (Mini App) mode does not have.
+  const handleMarkInvoicePaid = (id: string) => {
+    applyTransactions(saveLocalTransaction({ id, status: "PAID" }));
+    fetch(`/api/transactions/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "PAID" }),
+    }).catch(() => {});
   };
 
   // Client CRUD Handlers
@@ -138,7 +173,15 @@ export default function Home() {
   };
 
   const handleUpdateGoal = (newTarget: number) => {
-    setGoal((prev) => ({ ...prev, target: newTarget }));
+    setGoal((prev) => {
+      const next = { ...prev, target: newTarget };
+      try {
+        localStorage.setItem(GOAL_KEY, JSON.stringify(next));
+      } catch {
+        /* storage unavailable */
+      }
+      return next;
+    });
     try {
       fetch("/api/goals", {
         method: "POST",
@@ -151,8 +194,8 @@ export default function Home() {
   const handleCalendarDayClick = (date: Date) => {
     setSelectedDateForModal(date);
     // Check if there are transactions for this day
-    const dayStr = date.toISOString().split("T")[0];
-    const dayTxs = transactions.filter(t => new Date(t.date).toISOString().split("T")[0] === dayStr);
+    const dayStr = toDateKey(date);
+    const dayTxs = transactions.filter((t) => toDateKey(t.date) === dayStr);
     
     if (dayTxs.length > 0) {
       setIsDaySummaryModalOpen(true);
@@ -344,7 +387,11 @@ export default function Home() {
 
         {/* 5. INVOICES */}
         {activeTab === "invoices" && (
-          <InvoicesView transactions={transactions} onRefresh={syncFromStorage} />
+          <InvoicesView
+            transactions={transactions}
+            onRefresh={syncFromStorage}
+            onMarkPaid={handleMarkInvoicePaid}
+          />
         )}
 
         {/* 6. SETTINGS & WORKPLACES */}
@@ -391,7 +438,7 @@ export default function Home() {
       {isDaySummaryModalOpen && selectedDateForModal && (
         <DaySummaryModal
           date={selectedDateForModal}
-          transactions={transactions.filter(t => new Date(t.date).toISOString().split("T")[0] === selectedDateForModal.toISOString().split("T")[0])}
+          transactions={transactions.filter((t) => toDateKey(t.date) === toDateKey(selectedDateForModal))}
           onClose={() => setIsDaySummaryModalOpen(false)}
           onAddNew={() => {
             setIsDaySummaryModalOpen(false);
@@ -404,7 +451,9 @@ export default function Home() {
           onDelete={(id) => {
             handleDeleteTransaction(id);
             // If we deleted the last transaction for this day, maybe close the modal
-            const remaining = transactions.filter(t => t.id !== id && new Date(t.date).toISOString().split("T")[0] === selectedDateForModal.toISOString().split("T")[0]);
+            const remaining = transactions.filter(
+              (t) => t.id !== id && toDateKey(t.date) === toDateKey(selectedDateForModal)
+            );
             if (remaining.length === 0) setIsDaySummaryModalOpen(false);
           }}
         />

@@ -1,8 +1,60 @@
 import { Client, Category, Transaction, DashboardStats } from "@/types";
+import { toDateKey } from "@/lib/utils";
 
 const WORKPLACES_KEY = "gig_tracker_workplaces_v3";
 const CATEGORIES_KEY = "gig_tracker_categories_v3";
 const TRANSACTIONS_KEY = "gig_tracker_transactions_v3";
+// Marks that the demo data has already been seeded once. Without it, clearing
+// or deleting everything would silently bring the sample data back.
+const SEEDED_KEY = "gig_tracker_seeded_v3";
+
+function hasSeeded(): boolean {
+  try {
+    return localStorage.getItem(SEEDED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function markSeeded() {
+  try {
+    localStorage.setItem(SEEDED_KEY, "1");
+  } catch {
+    /* storage unavailable (private mode) */
+  }
+}
+
+/**
+ * Reads a list from localStorage. Seeds the defaults only on the very first
+ * run; afterwards an empty list stays empty.
+ */
+function readList<T>(key: string, defaults: T[]): T[] {
+  if (typeof window === "undefined") return defaults;
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw === null) {
+      if (hasSeeded()) return [];
+      localStorage.setItem(key, JSON.stringify(defaults));
+      markSeeded();
+      return defaults;
+    }
+    markSeeded();
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as T[]) : [];
+  } catch {
+    return defaults;
+  }
+}
+
+function writeList<T>(key: string, list: T[]): T[] {
+  try {
+    localStorage.setItem(key, JSON.stringify(list));
+    markSeeded();
+  } catch {
+    /* storage unavailable (private mode) */
+  }
+  return list;
+}
 
 export const DEFAULT_WORKPLACES: Client[] = [
   {
@@ -93,35 +145,29 @@ export const DEFAULT_TRANSACTIONS: Transaction[] = [
 ];
 
 export function getLocalWorkplaces(): Client[] {
-  if (typeof window === "undefined") return DEFAULT_WORKPLACES;
-  try {
-    const raw = localStorage.getItem(WORKPLACES_KEY);
-    if (!raw) {
-      localStorage.setItem(WORKPLACES_KEY, JSON.stringify(DEFAULT_WORKPLACES));
-      return DEFAULT_WORKPLACES;
-    }
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed : DEFAULT_WORKPLACES;
-  } catch {
-    return DEFAULT_WORKPLACES;
-  }
+  return readList<Client>(WORKPLACES_KEY, DEFAULT_WORKPLACES);
 }
 
 export function saveLocalWorkplace(wp: Partial<Client>): Client[] {
   const current = getLocalWorkplaces();
   const id = wp.id || `client-${Date.now()}`;
   const existingIdx = current.findIndex((c) => c.id === id);
+  const existing = existingIdx >= 0 ? current[existingIdx] : null;
 
+  // Merge over the stored record so a partial edit never drops the fields it
+  // did not touch (platform, color, rates, ...).
   const updatedWp: Client = {
+    ...(existing || {}),
+    ...wp,
     id,
-    name: wp.name || "Yangi Ish Joyi",
-    platform: wp.platform || "Workplace",
-    color: wp.color || "#6366f1",
-    defaultHourlyRate: wp.defaultHourlyRate || 10320,
-    defaultDailyRate: wp.defaultDailyRate || 120000,
-    defaultFeeRate: wp.defaultFeeRate || 0,
-    isActive: true,
-    userId: "default-user",
+    name: wp.name ?? existing?.name ?? "Yangi Ish Joyi",
+    platform: wp.platform ?? existing?.platform ?? "Workplace",
+    color: wp.color ?? existing?.color ?? "#6366f1",
+    defaultHourlyRate: wp.defaultHourlyRate ?? existing?.defaultHourlyRate ?? 10320,
+    defaultDailyRate: wp.defaultDailyRate ?? existing?.defaultDailyRate ?? 120000,
+    defaultFeeRate: wp.defaultFeeRate ?? existing?.defaultFeeRate ?? 0,
+    isActive: wp.isActive ?? existing?.isActive ?? true,
+    userId: existing?.userId || "default-user",
   };
 
   let updatedList: Client[];
@@ -132,43 +178,34 @@ export function saveLocalWorkplace(wp: Partial<Client>): Client[] {
     updatedList = [updatedWp, ...current];
   }
 
-  localStorage.setItem(WORKPLACES_KEY, JSON.stringify(updatedList));
-  return updatedList;
+  return writeList(WORKPLACES_KEY, updatedList);
 }
 
 export function deleteLocalWorkplace(id: string): Client[] {
-  const current = getLocalWorkplaces();
-  const updated = current.filter((c) => c.id !== id);
-  localStorage.setItem(WORKPLACES_KEY, JSON.stringify(updated));
-  return updated;
+  return writeList(
+    WORKPLACES_KEY,
+    getLocalWorkplaces().filter((c) => c.id !== id)
+  );
 }
 
 export function getLocalCategories(): Category[] {
-  if (typeof window === "undefined") return DEFAULT_CATEGORIES;
-  try {
-    const raw = localStorage.getItem(CATEGORIES_KEY);
-    if (!raw) {
-      localStorage.setItem(CATEGORIES_KEY, JSON.stringify(DEFAULT_CATEGORIES));
-      return DEFAULT_CATEGORIES;
-    }
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed : DEFAULT_CATEGORIES;
-  } catch {
-    return DEFAULT_CATEGORIES;
-  }
+  return readList<Category>(CATEGORIES_KEY, DEFAULT_CATEGORIES);
 }
 
 export function saveLocalCategory(cat: Partial<Category>): Category[] {
   const current = getLocalCategories();
   const id = cat.id || `cat-${Date.now()}`;
   const existingIdx = current.findIndex((c) => c.id === id);
+  const existing = existingIdx >= 0 ? current[existingIdx] : null;
 
   const newCat: Category = {
+    ...(existing || {}),
+    ...cat,
     id,
-    name: cat.name || "Kategoriya",
-    type: cat.type || "EXPENSE",
-    icon: cat.icon || "tag",
-    userId: "default-user",
+    name: cat.name ?? existing?.name ?? "Kategoriya",
+    type: cat.type ?? existing?.type ?? "EXPENSE",
+    icon: cat.icon ?? existing?.icon ?? "tag",
+    userId: existing?.userId || "default-user",
   };
 
   let updatedList: Category[];
@@ -179,61 +216,57 @@ export function saveLocalCategory(cat: Partial<Category>): Category[] {
     updatedList = [...current, newCat];
   }
 
-  localStorage.setItem(CATEGORIES_KEY, JSON.stringify(updatedList));
-  return updatedList;
+  return writeList(CATEGORIES_KEY, updatedList);
 }
 
 export function deleteLocalCategory(id: string): Category[] {
-  const current = getLocalCategories();
-  const updated = current.filter((c) => c.id !== id);
-  localStorage.setItem(CATEGORIES_KEY, JSON.stringify(updated));
-  return updated;
+  return writeList(
+    CATEGORIES_KEY,
+    getLocalCategories().filter((c) => c.id !== id)
+  );
 }
 
 export function getLocalTransactions(): Transaction[] {
-  if (typeof window === "undefined") return DEFAULT_TRANSACTIONS;
-  try {
-    const raw = localStorage.getItem(TRANSACTIONS_KEY);
-    if (!raw) {
-      localStorage.setItem(TRANSACTIONS_KEY, JSON.stringify(DEFAULT_TRANSACTIONS));
-      return DEFAULT_TRANSACTIONS;
-    }
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed : DEFAULT_TRANSACTIONS;
-  } catch {
-    return DEFAULT_TRANSACTIONS;
-  }
+  const list = readList<Transaction>(TRANSACTIONS_KEY, DEFAULT_TRANSACTIONS);
+  // Newest first, so every view shows the latest shift at the top.
+  return [...list].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 }
 
 export function saveLocalTransaction(tx: Partial<Transaction>): Transaction[] {
   const current = getLocalTransactions();
   const id = tx.id || `tx-${Date.now()}`;
   const existingIdx = current.findIndex((t) => t.id === id);
+  const existing = existingIdx >= 0 ? current[existingIdx] : null;
 
+  // An edit only carries the changed fields, so merge over the stored record.
+  // Rebuilding it from defaults used to reset the date, type, workplace and
+  // worked hours of the edited shift.
   const updatedTx: Transaction = {
+    ...(existing || {}),
+    ...tx,
     id,
-    userId: "default-user",
-    type: tx.type || "INCOME",
-    workType: tx.workType || "HOURLY_WAGE",
-    amount: tx.amount || 0,
-    currency: tx.currency || "KRW",
-    description: tx.description || null,
-    date: tx.date || new Date().toISOString(),
-    status: tx.status || "PAID",
-    startTime: tx.startTime || "08:00",
-    endTime: tx.endTime || "18:00",
-    breakMinutes: tx.breakMinutes || 0,
-    hourlyRate: tx.hourlyRate || 10320,
-    totalHours: tx.totalHours || 8,
-    isNightShift: tx.isNightShift || false,
-    isOvertime: tx.isOvertime || false,
-    isSpecialDuty: tx.isSpecialDuty || false,
-    unitCount: tx.unitCount || 1,
-    color: tx.color || "#6366f1",
-    clientId: tx.clientId || null,
-    categoryId: tx.categoryId || null,
-    fee: tx.fee || 0,
-    createdAt: new Date(),
+    userId: existing?.userId || "default-user",
+    type: tx.type ?? existing?.type ?? "INCOME",
+    workType: tx.workType ?? existing?.workType ?? "HOURLY_WAGE",
+    amount: tx.amount ?? existing?.amount ?? 0,
+    currency: tx.currency ?? existing?.currency ?? "KRW",
+    description: tx.description ?? existing?.description ?? null,
+    date: tx.date ?? existing?.date ?? new Date().toISOString(),
+    status: tx.status ?? existing?.status ?? "PAID",
+    startTime: tx.startTime ?? existing?.startTime ?? null,
+    endTime: tx.endTime ?? existing?.endTime ?? null,
+    breakMinutes: tx.breakMinutes ?? existing?.breakMinutes ?? 0,
+    hourlyRate: tx.hourlyRate ?? existing?.hourlyRate ?? 0,
+    totalHours: tx.totalHours ?? existing?.totalHours ?? 0,
+    isNightShift: tx.isNightShift ?? existing?.isNightShift ?? false,
+    isOvertime: tx.isOvertime ?? existing?.isOvertime ?? false,
+    isSpecialDuty: tx.isSpecialDuty ?? existing?.isSpecialDuty ?? false,
+    unitCount: tx.unitCount ?? existing?.unitCount ?? 1,
+    color: tx.color ?? existing?.color ?? "#6366f1",
+    clientId: tx.clientId ?? existing?.clientId ?? null,
+    categoryId: tx.categoryId ?? existing?.categoryId ?? null,
+    fee: tx.fee ?? existing?.fee ?? 0,
+    createdAt: existing?.createdAt || new Date().toISOString(),
   };
 
   let updatedList: Transaction[];
@@ -244,34 +277,46 @@ export function saveLocalTransaction(tx: Partial<Transaction>): Transaction[] {
     updatedList = [updatedTx, ...current];
   }
 
-  localStorage.setItem(TRANSACTIONS_KEY, JSON.stringify(updatedList));
-  return updatedList;
+  updatedList.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  return writeList(TRANSACTIONS_KEY, updatedList);
 }
 
 export function deleteLocalTransaction(id: string): Transaction[] {
-  const current = getLocalTransactions();
-  const updated = current.filter((t) => t.id !== id);
-  localStorage.setItem(TRANSACTIONS_KEY, JSON.stringify(updated));
-  return updated;
+  return writeList(
+    TRANSACTIONS_KEY,
+    getLocalTransactions().filter((t) => t.id !== id)
+  );
 }
 
-export function calculateLocalStats(transactions: Transaction[], currency: string = "KRW"): DashboardStats {
+export const DEFAULT_TAX_RATE = 3.3;
+
+export function calculateLocalStats(
+  transactions: Transaction[],
+  currency: string = "KRW",
+  categories: Category[] = [],
+  taxRate: number = DEFAULT_TAX_RATE
+): DashboardStats {
   let totalGrossIncome = 0;
   let totalExpenses = 0;
   let totalFees = 0;
   let pendingAmount = 0;
   let pendingCount = 0;
   let currentMonthIncome = 0;
+  let prevMonthIncome = 0;
   let totalWorkedHours = 0;
   const workedDaysSet = new Set<string>();
 
   const platformMap = new Map<string, { amount: number; hours: number; shifts: number; color: string }>();
   const categoryMap = new Map<string, number>();
 
+  const categoryNameById = new Map(categories.map((c) => [c.id, c.name]));
+
   const now = new Date();
   const currentYear = now.getFullYear();
   const currentMonth = now.getMonth(); // 0-indexed
   const currMonthKey = `${currentYear}-${String(currentMonth + 1).padStart(2, "0")}`;
+  const prevMonthDate = new Date(currentYear, currentMonth - 1, 1);
+  const prevMonthKey = `${prevMonthDate.getFullYear()}-${String(prevMonthDate.getMonth() + 1).padStart(2, "0")}`;
 
   // 12 Months Map
   const monthsData: { [key: string]: { name: string; income: number; expense: number; profit: number; hours: number } } = {};
@@ -295,7 +340,11 @@ export function calculateLocalStats(transactions: Transaction[], currency: strin
         if (isCurrentMonth) {
           currentMonthIncome += tx.amount;
           totalWorkedHours += tx.totalHours || 0;
-          workedDaysSet.add(txDate.toISOString().split("T")[0]);
+          workedDaysSet.add(toDateKey(txDate));
+        }
+
+        if (txMonthKey === prevMonthKey) {
+          prevMonthIncome += tx.amount;
         }
 
         const clientName = tx.client?.name || (tx.clientId === "client-yekaterina" ? "Yekaterina" : tx.clientId === "client-emart" ? "Emart" : tx.clientId === "client-xasanboy" ? "Xasanboy aka" : "Boshqa");
@@ -316,6 +365,15 @@ export function calculateLocalStats(transactions: Transaction[], currency: strin
       }
     } else if (tx.type === "EXPENSE" && tx.status === "PAID") {
       totalExpenses += tx.amount;
+
+      // Expense breakdown per category — this was collected nowhere before,
+      // so the category breakdown always came back empty.
+      const catName =
+        tx.category?.name ||
+        (tx.categoryId ? categoryNameById.get(tx.categoryId) : undefined) ||
+        "Boshqa xarajat";
+      categoryMap.set(catName, (categoryMap.get(catName) || 0) + tx.amount);
+
       if (monthsData[txMonthKey]) {
         monthsData[txMonthKey].expense += tx.amount;
       }
@@ -331,8 +389,13 @@ export function calculateLocalStats(transactions: Transaction[], currency: strin
   }));
 
   const netProfit = totalGrossIncome - totalFees - totalExpenses;
-  const estimatedTax = netProfit > 0 ? (netProfit * 3.3) / 100 : 0;
+  const estimatedTax = netProfit > 0 ? (netProfit * taxRate) / 100 : 0;
   const takeHomePay = Math.max(0, netProfit - estimatedTax);
+
+  const prevMonthDiffPercentage =
+    prevMonthIncome > 0
+      ? Math.round(((currentMonthIncome - prevMonthIncome) / prevMonthIncome) * 100)
+      : 0;
 
   const sortedPlatforms = Array.from(platformMap.entries())
     .map(([name, data]) => ({
@@ -361,7 +424,7 @@ export function calculateLocalStats(transactions: Transaction[], currency: strin
     totalWorkedDays: workedDaysSet.size,
     totalWorkedHours: Math.round(totalWorkedHours),
     currentMonthName: now.toLocaleDateString("en-US", { month: "short", year: "numeric" }),
-    prevMonthDiffPercentage: 0,
+    prevMonthDiffPercentage,
     monthlyTrend,
     platformBreakdown: sortedPlatforms.map((p) => ({
       name: p.name,
@@ -376,6 +439,6 @@ export function calculateLocalStats(transactions: Transaction[], currency: strin
       percentage: totalExpenses > 0 ? Math.round((amount / totalExpenses) * 100) : 0,
     })),
     currency,
-    taxRate: 3.3,
+    taxRate,
   };
 }

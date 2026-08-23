@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { Transaction, Client } from "@/types";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, toDateKey } from "@/lib/utils";
 import { useTelegram } from "./telegram-provider";
 import {
   Briefcase,
@@ -39,11 +39,13 @@ export function SalaryMonthlyView({
   const [editDesc, setEditDesc] = useState("");
 
   // Only consider paid income shifts
-  const shiftList = transactions.filter((t) => t.type === "INCOME" && t.status === "PAID");
+  const shiftList = transactions
+    .filter((t) => t.type === "INCOME" && t.status === "PAID")
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   const totalActualPayment = shiftList.reduce((sum, t) => sum + t.amount, 0);
   const totalHours = shiftList.reduce((sum, t) => sum + (t.totalHours || 0), 0);
-  const totalDays = new Set(shiftList.map((t) => new Date(t.date).toISOString().split("T")[0])).size;
+  const totalDays = new Set(shiftList.map((t) => toDateKey(t.date))).size;
 
   // Workplace Aggregations
   const workplaceSummaryMap = new Map<

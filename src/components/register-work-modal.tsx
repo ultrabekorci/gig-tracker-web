@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { Client, WorkType } from "@/types";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, toDateKey, parseDateKey } from "@/lib/utils";
 import { saveLocalTransaction } from "@/lib/storage";
 import { useTelegram } from "./telegram-provider";
 import {
@@ -41,13 +41,10 @@ export function RegisterWorkModal({
   const [selectedClientId, setSelectedClientId] = useState(clients[0]?.id || "");
   const [workColor, setWorkColor] = useState(clients[0]?.color || "#6366f1");
 
-  // Dates
-  const [workDate, setWorkDate] = useState(
-    initialDate ? initialDate.toISOString().split("T")[0] : new Date().toISOString().split("T")[0]
-  );
-  const [endDate, setEndDate] = useState(
-    initialDate ? initialDate.toISOString().split("T")[0] : new Date().toISOString().split("T")[0]
-  );
+  // Dates — local calendar days, so the picker shows the day that was clicked
+  // in the calendar (toISOString() shifts it by one outside UTC).
+  const [workDate, setWorkDate] = useState(toDateKey(initialDate || new Date()));
+  const [endDate, setEndDate] = useState(toDateKey(initialDate || new Date()));
 
   // Times & Break
   const [arrivalTime, setArrivalTime] = useState("08:00");
@@ -75,6 +72,7 @@ export function RegisterWorkModal({
   const [loading, setLoading] = useState(false);
   const [calculatedSalary, setCalculatedSalary] = useState(0);
   const [calculatedHours, setCalculatedHours] = useState(0);
+  const [calculatedFee, setCalculatedFee] = useState(0);
 
   // Colors Palette
   const colorPalette = ["#6366f1", "#10b981", "#f59e0b", "#ec4899", "#8b5cf6", "#06b6d4", "#f43f5e", "#64748b"];
@@ -101,7 +99,8 @@ export function RegisterWorkModal({
       if (totalMins < 0) totalMins += 24 * 60; // overnight shift
 
       const workMins = Math.max(0, totalMins - (parseInt(breakMinutes) || 0));
-      const hours = workMins / 60;
+      // Two decimals — 7h 20m used to be stored as 7.333333333333333.
+      const hours = Math.round((workMins / 60) * 100) / 100;
       setCalculatedHours(hours);
 
       const baseRate = parseFloat(hourlyWage) || 0;
@@ -112,6 +111,7 @@ export function RegisterWorkModal({
 
       const total = Math.round(hours * baseRate * rateMultiplier);
       setCalculatedSalary(total);
+      setCalculatedFee(0);
     } else if (workType === "DAILY_WAGE") {
       setCalculatedSalary(parseFloat(dailyWage) || 0);
       setCalculatedHours(8);
@@ -123,8 +123,9 @@ export function RegisterWorkModal({
       const count = parseInt(perCaseCount) || 1;
       const fee = parseFloat(perCaseFee) || 0;
       const gross = perCase * count;
-      const total = gross - (gross * fee) / 100;
-      setCalculatedSalary(Math.round(total));
+      const feeAmount = (gross * fee) / 100;
+      setCalculatedFee(Math.round(feeAmount));
+      setCalculatedSalary(Math.round(gross - feeAmount));
       setCalculatedHours(0);
     } else if (workType === "ADVANCE") {
       setCalculatedSalary(-(parseFloat(advanceAmount) || 0));
@@ -158,6 +159,20 @@ export function RegisterWorkModal({
     isSpecialDuty,
   ]);
 
+  // The clients list is loaded asynchronously; without this the form kept an
+  // empty (or deleted) workplace id and saved the shift with no workplace.
+  useEffect(() => {
+    if (clients.length === 0) return;
+    if (clients.some((c) => c.id === selectedClientId)) return;
+
+    const first = clients[0];
+    setSelectedClientId(first.id);
+    if (first.color) setWorkColor(first.color);
+    if (first.defaultHourlyRate) setHourlyWage(first.defaultHourlyRate.toString());
+    if (first.defaultDailyRate) setDailyWage(first.defaultDailyRate.toString());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clients]);
+
   const handleClientSelect = (clientId: string) => {
     setSelectedClientId(clientId);
     const client = clients.find((c) => c.id === clientId);
@@ -184,13 +199,13 @@ export function RegisterWorkModal({
       }
 
       // 1. Save locally immediately!
-      const newSavedTx = saveLocalTransaction({
+      saveLocalTransaction({
         type: txType,
         workType,
         amount: finalAmount,
         currency,
         description: memo || selectedClient?.name || "Ish smenasi",
-        date: new Date(workDate).toISOString(),
+        date: parseDateKey(workDate).toISOString(),
         status: "PAID",
         startTime: arrivalTime,
         endTime: departureTime,
@@ -201,6 +216,7 @@ export function RegisterWorkModal({
         isOvertime,
         isSpecialDuty,
         unitCount: parseInt(perCaseCount) || 1,
+        fee: workType === "PER_CASE" ? calculatedFee : 0,
         color: workColor,
         clientId: selectedClientId || null,
       });
@@ -227,6 +243,7 @@ export function RegisterWorkModal({
           isOvertime,
           isSpecialDuty,
           unitCount: parseInt(perCaseCount) || 1,
+          fee: workType === "PER_CASE" ? calculatedFee : 0,
           color: workColor,
           clientId: selectedClientId || null,
         }),
@@ -341,12 +358,7 @@ export function RegisterWorkModal({
                   </option>
                 ))
               ) : (
-                <>
-                  <option value="client-yekaterina">● Yekaterina</option>
-                  <option value="client-emart">● Emart</option>
-                  <option value="client-xasanboy">● Xasanboy aka</option>
-                  <option value="client-daily">● Kunlik ish (Obekt)</option>
-                </>
+                <option value="">Ish joyi yo'q — Sozlamalardan qo'shing</option>
               )}
             </select>
           </div>

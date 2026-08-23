@@ -9,31 +9,41 @@ import { Clock, CheckCircle2, AlertCircle, Building2, Calendar } from "lucide-re
 export function InvoicesView({
   transactions,
   onRefresh,
+  onMarkPaid,
 }: {
   transactions: Transaction[];
   onRefresh: () => void;
+  onMarkPaid?: (id: string) => void;
 }) {
   const { currency, hapticFeedback } = useTelegram();
 
-  const pendingList = transactions.filter((t) => t.status === "PENDING" && t.type === "INCOME");
+  const pendingList = transactions
+    .filter((t) => t.status === "PENDING" && t.type === "INCOME")
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   const totalPending = pendingList.reduce((acc, curr) => acc + curr.amount, 0);
 
-  const handleMarkAsPaid = async (id: string) => {
-    try {
-      hapticFeedback("medium");
-      const res = await fetch(`/api/transactions/${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "PAID" }),
-      });
-      if (res.ok) {
-        hapticFeedback("success");
-        onRefresh();
-      }
-    } catch (e) {
-      console.error(e);
-      hapticFeedback("error");
+  const handleMarkAsPaid = (id: string) => {
+    hapticFeedback("medium");
+    if (onMarkPaid) {
+      // Local-first: the app stores its data on the device, so the status has
+      // to change there and not only through the (optional) API.
+      onMarkPaid(id);
+      hapticFeedback("success");
+      return;
     }
+
+    fetch(`/api/transactions/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "PAID" }),
+    })
+      .then((res) => {
+        if (res.ok) {
+          hapticFeedback("success");
+          onRefresh();
+        }
+      })
+      .catch(() => hapticFeedback("error"));
   };
 
   return (
