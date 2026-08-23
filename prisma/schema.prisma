@@ -1,0 +1,103 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String        @id @default(uuid())
+  telegramId   BigInt?       @unique
+  username     String?
+  name         String        @default("Freelancer")
+  currency     String        @default("USD")
+  taxRate      Float         @default(4.0) // Standart o'zini o'zi band qilganlar / minimal soliq stavkasi
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  
+  transactions Transaction[]
+  categories   Category[]
+  clients      Client[]
+  goals        Goal[]
+}
+
+model Category {
+  id           String        @id @default(uuid())
+  name         String
+  icon         String?       @default("tag")
+  type         String        @default("EXPENSE") // "EXPENSE" | "INCOME"
+  userId       String
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+  createdAt    DateTime      @default(now())
+}
+
+model Client {
+  id                String        @id @default(uuid())
+  name              String        // Yekaterina, Emart, Xasanboy aka, Obekt
+  platform          String?       @default("Workplace") // Workplace, Freelance, etc.
+  color             String?       @default("#6366f1")
+  isActive          Boolean       @default(true)
+  defaultFeeRate    Float         @default(0.0)
+  defaultHourlyRate Float         @default(10320.0) // Standart soatlik stavka (KRW)
+  defaultDailyRate  Float         @default(120000.0) // Standart kunlik stavka (KRW)
+  startDate         DateTime?
+  endDate           DateTime?
+  userId            String
+  user              User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions      Transaction[]
+  createdAt         DateTime      @default(now())
+}
+
+model Transaction {
+  id            String    @id @default(uuid())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type          String    // "INCOME" | "EXPENSE"
+  workType      String?   @default("DAILY_WAGE") // "HOURLY_WAGE", "DAILY_WAGE", "FIXED_PAY", "PER_CASE", "ADVANCE", "NON_TAXABLE", "ANNUAL_LEAVE", "DAY_OFF", "NO_SHOW"
+  amount        Float
+  currency      String    @default("KRW")
+  description   String?
+  date          DateTime  @default(now())
+  endDate       DateTime? // For fixed pay date range
+  status        String    @default("PAID") // "PAID" | "PENDING"
+  dueDate       DateTime?
+  fee           Float     @default(0.0)
+  
+  // Shift Specifics
+  startTime     String?   @default("09:00")
+  endTime       String?   @default("18:00")
+  breakMinutes  Int?      @default(0)
+  hourlyRate    Float?    @default(10320.0)
+  totalHours    Float?    @default(8.0)
+  isNightShift  Boolean?  @default(false)
+  isOvertime    Boolean?  @default(false)
+  isSpecialDuty Boolean?  @default(false)
+  unitCount     Int?      @default(1) // For per-case
+  color         String?   @default("#6366f1")
+  
+  categoryId    String?
+  category      Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  
+  clientId      String?
+  client        Client?   @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model Goal {
+  id            String   @id @default(uuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title         String   // "Oylik daromad rejasi", "Yangi M3 MacBook uchun"
+  targetAmount  Float
+  currentAmount Float    @default(0.0)
+  period        String   @default("MONTHLY") // "MONTHLY" | "CUSTOM"
+  month         Int?
+  year          Int?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
