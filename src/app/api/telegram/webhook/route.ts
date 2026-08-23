@@ -1,36 +1,65 @@
 import { NextResponse } from "next/server";
+import { parseEntry } from "@/lib/telegram/parse";
+import {
+  transcribeTelegramVoice,
+  isVoiceTranscriptionConfigured,
+  speechProviderLabel,
+  MAX_SYNC_AUDIO_SECONDS,
+} from "@/lib/telegram/voice";
+import { isDatabaseConfigured, saveEntryForSender, getStatsForSender } from "@/lib/telegram/entries";
+import {
+  buildConfirmMessage,
+  buildDeepLink,
+  buildHelpMessage,
+  buildSavedMessage,
+  buildStartMessage,
+  buildStatsMessage,
+  buildUnparsedMessage,
+  buildVoiceHeardMessage,
+} from "@/lib/telegram/messages";
 
 export const dynamic = "force-dynamic";
 
-/**
- * Telegram rejects a parse_mode=HTML message whose text contains raw "<", ">"
- * or "&", so anything coming from the user has to be escaped before it is
- * embedded into a message.
- */
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+function appUrlFrom(request: Request): string {
+  const configured = process.env.NEXT_PUBLIC_APP_URL;
+  if (configured) return configured.replace(/\/$/, "");
+  const host = request.headers.get("host") || "gig-tracker-web.vercel.app";
+  const protocol = host.includes("localhost") ? "http" : "https";
+  return `${protocol}://${host}`;
 }
 
 export async function GET(request: Request) {
   try {
     const token = process.env.TELEGRAM_BOT_TOKEN;
     const { searchParams } = new URL(request.url);
-    const host = request.headers.get("host") || "gig-tracker-web.vercel.app";
-    const protocol = host.includes("localhost") ? "http" : "https";
-    const webhookUrl = `${protocol}://${host}/api/telegram/webhook`;
+    const webhookUrl = `${appUrlFrom(request)}/api/telegram/webhook`;
 
     if (!token) return NextResponse.json({ ok: false, error: "No token" });
 
     if (searchParams.get("set") === "true") {
-      const setRes = await fetch(`https://api.telegram.org/bot${token}/setWebhook?url=${encodeURIComponent(webhookUrl)}`);
+      const params = new URLSearchParams({ url: webhookUrl });
+      const secret = process.env.TELEGRAM_WEBHOOK_SECRET;
+      if (secret) params.set("secret_token", secret);
+
+      const setRes = await fetch(`https://api.telegram.org/bot${token}/setWebhook?${params.toString()}`);
       return NextResponse.json({ ok: true, telegramResponse: await setRes.json() });
     }
 
+    if (searchParams.get("delete") === "true") {
+      // Needed before switching to the long-polling ("classic") bot: Telegram
+      // refuses getUpdates while a webhook is registered.
+      const delRes = await fetch(`https://api.telegram.org/bot${token}/deleteWebhook`);
+      return NextResponse.json({ ok: true, telegramResponse: await delRes.json() });
+    }
+
     const infoRes = await fetch(`https://api.telegram.org/bot${token}/getWebhookInfo`);
-    return NextResponse.json({ ok: true, webhookUrl, webhookInfo: await infoRes.json() });
+    return NextResponse.json({
+      ok: true,
+      webhookUrl,
+      mode: isDatabaseConfigured() ? "database" : "mini-app",
+      speechToText: speechProviderLabel(),
+      webhookInfo: await infoRes.json(),
+    });
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: e.message }, { status: 500 });
   }
@@ -38,14 +67,18 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
     const token = process.env.TELEGRAM_BOT_TOKEN;
-    const openAiKey = process.env.OPENAI_API_KEY;
-    const host = request.headers.get("host") || "gig-tracker-web.vercel.app";
-    const protocol = host.includes("localhost") ? "http" : "https";
-    const appUrl = `${protocol}://${host}`;
-
     if (!token) return NextResponse.json({ message: "No bot token configured" });
+
+    // Anyone can POST to a public webhook, so honour Telegram's secret header
+    // when one is configured.
+    const secret = process.env.TELEGRAM_WEBHOOK_SECRET;
+    if (secret && request.headers.get("x-telegram-bot-api-secret-token") !== secret) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    const body = await request.json();
+    const appUrl = appUrlFrom(request);
 
     const message = body.message;
     if (!message) return NextResponse.json({ ok: true });
@@ -61,116 +94,100 @@ export async function POST(request: Request) {
       });
     };
 
-    let text = message.text || "";
+    const appButton = { inline_keyboard: [[{ text: "🚀 Gig Tracker", web_app: { url: appUrl } }]] };
 
-    // Handle Voice Message
-    if (message.voice) {
-      if (!openAiKey) {
-        await sendMessage(`🎙 <b>Ovozli xabar qabul qilindi.</b>\n\nAmmo ovozni matnga aylantirish uchun serverda <code>OPENAI_API_KEY</code> ulanmagan.\nIltimos, hozircha matn orqali yozing yoki Mini App orqali kiriting.`);
+    let text: string = message.text || "";
+    let fromVoice = false;
+
+    // ---- Voice / audio message -> text ----
+    const voice = message.voice || message.audio || message.video_note;
+    if (voice) {
+      if (!isVoiceTranscriptionConfigured()) {
+        await sendMessage(
+          `🎙 <b>Ovozli xabar qabul qilindi.</b>\n\n` +
+            `Ammo ovozni matnga aylantirish serverda sozlanmagan ` +
+            `(<code>GOOGLE_SPEECH_API_KEY</code> yoki <code>GOOGLE_SERVICE_ACCOUNT_JSON</code>).\n` +
+            `Iltimos, hozircha matn orqali yozing yoki Mini App orqali kiriting.`
+        );
         return NextResponse.json({ ok: true });
       }
 
-      await sendMessage(`⏳ Ovozli xabar qayta ishlanmoqda...`);
-
-      // 1. Get file path from Telegram
-      const fileId = message.voice.file_id;
-      const fileRes = await fetch(`https://api.telegram.org/bot${token}/getFile?file_id=${fileId}`);
-      const fileData = await fileRes.json();
-      
-      if (fileData.ok) {
-        // 2. Download file
-        const filePath = fileData.result.file_path;
-        const audioUrl = `https://api.telegram.org/file/bot${token}/${filePath}`;
-        const audioRes = await fetch(audioUrl);
-        const audioBlob = await audioRes.blob();
-
-        // 3. Send to OpenAI Whisper
-        const formData = new FormData();
-        formData.append("file", audioBlob, "voice.oga");
-        formData.append("model", "whisper-1");
-        formData.append("language", "uz");
-
-        const aiRes = await fetch("https://api.openai.com/v1/audio/transcriptions", {
-          method: "POST",
-          headers: { "Authorization": `Bearer ${openAiKey}` },
-          body: formData
-        });
-
-        const aiData = await aiRes.json();
-        if (aiData.text) {
-          text = aiData.text;
-          await sendMessage(`🗣 <b>Sizning gapingiz:</b>\n<i>"${escapeHtml(text)}"</i>`);
-        } else {
-          await sendMessage(`❌ Ovozni aniqlab bo'lmadi.`);
-          return NextResponse.json({ ok: true });
-        }
+      if (voice.duration && voice.duration > MAX_SYNC_AUDIO_SECONDS) {
+        await sendMessage(
+          `🎙 Ovozli xabar juda uzun (${voice.duration} soniya).\n` +
+            `Iltimos, ${MAX_SYNC_AUDIO_SECONDS} soniyagacha bo'lgan qisqa xabar yuboring.`
+        );
+        return NextResponse.json({ ok: true });
       }
+
+      await sendMessage("⏳ Ovozli xabar qayta ishlanmoqda...");
+
+      const transcript = await transcribeTelegramVoice({
+        botToken: token,
+        fileId: voice.file_id,
+        durationSeconds: voice.duration,
+      });
+
+      if (!transcript) {
+        await sendMessage("❌ Ovozni aniqlab bo'lmadi. Yana bir bor urinib ko'ring yoki matn yozing.");
+        return NextResponse.json({ ok: true });
+      }
+
+      text = transcript;
+      fromVoice = true;
+      await sendMessage(buildVoiceHeardMessage(text));
     }
 
     if (!text) return NextResponse.json({ ok: true });
     text = text.trim();
 
-    // Handle /start
+    // ---- Commands ----
     if (text.startsWith("/start")) {
-      await sendMessage(
-        `👋 <b>Assalomu alaykum, ${escapeHtml(sender.first_name || "")}!</b>\n\n` +
-        `Sizning ma'lumotlaringiz ilovaning o'zida (telefon xotirasida) saqlanadi.\n` +
-        `Smena qo'shish uchun matn yozing yoki ovozli xabar yuboring.\n\n` +
-        `Misol: <code>120 ming zavodda ishladim</code>\n\n` +
-        `Yoki to'g'ridan-to'g'ri ilovaga kiring:`,
-        { inline_keyboard: [[{ text: "🚀 Gig Tracker", web_app: { url: appUrl } }]] }
-      );
+      await sendMessage(buildStartMessage(sender?.first_name), appButton);
       return NextResponse.json({ ok: true });
     }
 
-    // Try to parse amount and description from Text
-    // E.g., "+120000 Zavod", "120 ming zavodda ishladim", "-15000 tushlik"
-    let amount = 0;
-    let desc = "";
-    let type = "INCOME";
-
-    if (text.startsWith("-") || text.toLowerCase().includes("xarajat") || text.toLowerCase().includes("chiqim")) {
-      type = "EXPENSE";
+    if (text.startsWith("/help")) {
+      await sendMessage(buildHelpMessage(), appButton);
+      return NextResponse.json({ ok: true });
     }
 
-    // Extract numbers — "120000", "120 000", "120.000" and "120 ming" all mean
-    // the same amount, so grouping separators are dropped first.
-    const numMatch = text.match(/\d[\d\s.,]*\d|\d/);
-    if (numMatch) {
-      const raw = numMatch[0];
-      const compact = raw.replace(/\s/g, "");
-      // "120.000" / "120,000" are grouped thousands; "12.5" is a decimal.
-      const normalized = /^\d{1,3}([.,]\d{3})+$/.test(compact)
-        ? compact.replace(/[.,]/g, "")
-        : compact.replace(",", ".");
-      const rawNum = parseFloat(normalized);
-      if (!isNaN(rawNum)) {
-        amount = text.toLowerCase().includes("ming") ? rawNum * 1000 : rawNum;
+    if (text.startsWith("/stats")) {
+      const stats = sender ? await getStatsForSender(sender) : null;
+      if (stats) {
+        await sendMessage(buildStatsMessage(stats), appButton);
+      } else {
+        await sendMessage(
+          `📊 Hisobot Mini App ichida hisoblanadi — ma'lumotlaringiz shu qurilmada saqlanadi.\n\n` +
+            `Ochish uchun tugmani bosing:`,
+          appButton
+        );
       }
-
-      // Clean up description
-      desc = text.replace(raw, "").replace(/ming|ishladim|zavodda/gi, "").replace(/^[-+\s]+/, "").trim();
-      if (desc.length < 2) desc = type === "INCOME" ? "Smena (Bot)" : "Xarajat (Bot)";
-    }
-
-    if (amount > 0) {
-      // Send Deep Link to App
-      const deepLinkUrl = `${appUrl}?action=add&type=${type}&amount=${amount}&desc=${encodeURIComponent(desc)}`;
-      
-      await sendMessage(
-        `✅ <b>Ma'lumot aniqlandi!</b>\n\n` +
-        `${type === "INCOME" ? "💰 Daromad" : "💸 Xarajat"}: <b>${amount.toLocaleString()}</b>\n` +
-        `📝 Izoh: <i>${escapeHtml(desc)}</i>\n\n` +
-        `Ilovaga saqlash uchun quyidagi tugmani bosing:`,
-        { inline_keyboard: [[{ text: "📥 Ilovada Saqlash", web_app: { url: deepLinkUrl } }]] }
-      );
       return NextResponse.json({ ok: true });
     }
 
-    // Fallback
-    await sendMessage(
-      `❓ Tushunarsiz buyruq.\n\nSmena yozish uchun summani kiriting:\nMasalan: <code>120000 Zavod</code> yoki ovozli xabar yuboring.`
-    );
+    // ---- Income / expense entry (text and voice use the same parser) ----
+    const entry = parseEntry(text);
+    if (!entry) {
+      await sendMessage(buildUnparsedMessage(), appButton);
+      return NextResponse.json({ ok: true });
+    }
+
+    const saved = sender ? await saveEntryForSender(sender, entry) : null;
+
+    if (saved) {
+      // Classic mode: the bot itself stored the entry.
+      await sendMessage(
+        buildSavedMessage(entry, saved.currency) + (fromVoice ? "\n\n🎙 Ovozli xabardan yozildi." : ""),
+        appButton
+      );
+    } else {
+      // Mini App mode: the data lives on the device, so hand over a deep link.
+      await sendMessage(buildConfirmMessage(entry, process.env.DEFAULT_CURRENCY || "KRW"), {
+        inline_keyboard: [[{ text: "📥 Ilovada Saqlash", web_app: { url: buildDeepLink(appUrl, entry) } }]],
+      });
+    }
+
     return NextResponse.json({ ok: true });
   } catch (error: any) {
     console.error("Telegram webhook error:", error);

@@ -1,169 +1,176 @@
-import { Bot, InlineKeyboard } from "grammy";
-import { PrismaClient } from "@prisma/client";
+/**
+ * Classic long-polling bot ("anaviy usul"): run it with `npm run bot` on any
+ * machine — no public URL or webhook needed.
+ *
+ * It shares its parsing, transcription and storage logic with the serverless
+ * webhook (src/app/api/telegram/webhook), so both modes behave the same.
+ */
+import { Bot, Context, InlineKeyboard } from "grammy";
 import dotenv from "dotenv";
+
+import { parseEntry } from "@/lib/telegram/parse";
+import {
+  transcribeTelegramVoice,
+  isVoiceTranscriptionConfigured,
+  speechProviderLabel,
+  MAX_SYNC_AUDIO_SECONDS,
+} from "@/lib/telegram/voice";
+import { isDatabaseConfigured, saveEntryForSender, getStatsForSender } from "@/lib/telegram/entries";
+import {
+  buildConfirmMessage,
+  buildDeepLink,
+  buildHelpMessage,
+  buildSavedMessage,
+  buildStartMessage,
+  buildStatsMessage,
+  buildUnparsedMessage,
+  buildVoiceHeardMessage,
+} from "@/lib/telegram/messages";
 
 dotenv.config();
 
-const prisma = new PrismaClient();
 const token = process.env.TELEGRAM_BOT_TOKEN;
-
 if (!token) {
   console.error("❌ TELEGRAM_BOT_TOKEN topilmadi! Iltimos .env fayliga bot tokeningizni kiriting.");
   process.exit(1);
 }
 
 const bot = new Bot(token);
-const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/$/, "");
+const defaultCurrency = process.env.DEFAULT_CURRENCY || "KRW";
+
+const appKeyboard = () =>
+  appUrl.startsWith("https://")
+    ? new InlineKeyboard().webApp("🚀 Gig Tracker Mini App", appUrl)
+    : undefined; // Telegram only accepts https URLs for web_app buttons
+
+const html = { parse_mode: "HTML" as const };
 
 bot.command("start", async (ctx) => {
-  const from = ctx.from;
-  if (!from) return;
+  await ctx.reply(buildStartMessage(ctx.from?.first_name), { ...html, reply_markup: appKeyboard() });
+});
 
-  // Find or create user
-  await prisma.user.upsert({
-    where: { telegramId: BigInt(from.id) },
-    update: {
-      name: from.first_name + (from.last_name ? ` ${from.last_name}` : ""),
-      username: from.username || null,
-    },
-    create: {
-      telegramId: BigInt(from.id),
-      name: from.first_name + (from.last_name ? ` ${from.last_name}` : ""),
-      username: from.username || null,
-    },
-  });
-
-  const keyboard = new InlineKeyboard().webApp("🚀 Gig Tracker Mini App", appUrl);
-
-  await ctx.reply(
-    `👋 <b>Assalomu alaykum, ${from.first_name}!</b>\n\n` +
-      `<b>Gig Tracker</b> botiga xush kelibsiz.\n\n` +
-      `💡 <b>Tezkor buyruqlar:</b>\n` +
-      `• <code>+150 Upwork Logo dizayn</code> — Kirim yozish\n` +
-      `• <code>-25 Benzin</code> — Chiqim yozish\n` +
-      `• <code>/stats</code> — Oylik hisobotni ko'rish\n\n` +
-      `Ilovani ochish uchun pastdagi tugmani bosing:`,
-    {
-      parse_mode: "HTML",
-      reply_markup: keyboard,
-    }
-  );
+bot.command("help", async (ctx) => {
+  await ctx.reply(buildHelpMessage(), { ...html, reply_markup: appKeyboard() });
 });
 
 bot.command("stats", async (ctx) => {
-  const from = ctx.from;
-  if (!from) return;
+  const stats = ctx.from ? await getStatsForSender(ctx.from) : null;
+  if (!stats) {
+    await ctx.reply(
+      "📊 Hozircha yozuvlar yo'q yoki ma'lumotlar bazasi ulanmagan.\n" +
+        "Kirim yozish uchun: <code>+150000 Zavod</code>",
+      { ...html, reply_markup: appKeyboard() }
+    );
+    return;
+  }
+  await ctx.reply(buildStatsMessage(stats), { ...html, reply_markup: appKeyboard() });
+});
 
-  const user = await prisma.user.findFirst({
-    where: { telegramId: BigInt(from.id) },
-  });
-
-  if (!user) {
-    await ctx.reply("Siz hali birorta tranzaksiya kiritmadingiz. /start bosing.");
+/** Text and transcribed voice both end up here. */
+async function handleEntryText(ctx: Context, text: string, fromVoice: boolean) {
+  const entry = parseEntry(text);
+  if (!entry) {
+    await ctx.reply(buildUnparsedMessage(), { ...html, reply_markup: appKeyboard() });
     return;
   }
 
-  const transactions = await prisma.transaction.findMany({
-    where: { userId: user.id },
-  });
+  const saved = ctx.from ? await saveEntryForSender(ctx.from, entry) : null;
 
-  let income = 0;
-  let expense = 0;
-  let pending = 0;
+  if (saved) {
+    await ctx.reply(buildSavedMessage(entry, saved.currency) + (fromVoice ? "\n\n🎙 Ovozli xabardan yozildi." : ""), {
+      ...html,
+      reply_markup: appKeyboard(),
+    });
+    return;
+  }
 
-  transactions.forEach((tx) => {
-    if (tx.type === "INCOME") {
-      if (tx.status === "PAID") income += tx.amount;
-      else pending += tx.amount;
-    } else if (tx.type === "EXPENSE" && tx.status === "PAID") {
-      expense += tx.amount;
-    }
-  });
+  // No database — hand the entry over to the Mini App instead of losing it.
+  const keyboard = appUrl.startsWith("https://")
+    ? new InlineKeyboard().webApp("📥 Ilovada Saqlash", buildDeepLink(appUrl, entry))
+    : undefined;
 
-  const net = income - expense;
-  const keyboard = new InlineKeyboard().webApp("📊 To'liq Dashboard", appUrl);
-
-  await ctx.reply(
-    `📊 <b>Sizning moliyaviy hisobotingiz:</b>\n\n` +
-      `🟢 <b>Jami daromad:</b> $${income.toLocaleString()}\n` +
-      `🔴 <b>Jami xarajat:</b> $${expense.toLocaleString()}\n` +
-      `📈 <b>Sof foyda:</b> $${net.toLocaleString()}\n` +
-      `⏳ <b>Kutilayotgan pullar:</b> $${pending.toLocaleString()}\n\n` +
-      `Batafsil tahlil va grafiklar uchun Mini App'ga kiring!`,
-    {
-      parse_mode: "HTML",
-      reply_markup: keyboard,
-    }
-  );
-});
+  await ctx.reply(buildConfirmMessage(entry, defaultCurrency), { ...html, reply_markup: keyboard });
+}
 
 bot.on("message:text", async (ctx) => {
-  const text = ctx.message.text.trim();
-  const from = ctx.from;
-  if (!from) return;
-
-  let user = await prisma.user.findFirst({
-    where: { telegramId: BigInt(from.id) },
-  });
-
-  if (!user) {
-    user = await prisma.user.create({
-      data: {
-        telegramId: BigInt(from.id),
-        name: from.first_name + (from.last_name ? ` ${from.last_name}` : ""),
-        username: from.username || null,
-      },
-    });
-  }
-
-  // Quick Income: +50 ...
-  const incomeMatch = text.match(/^\+\s*(\d+(?:\.\d+)?)\s*(.*)$/);
-  if (incomeMatch) {
-    const amount = parseFloat(incomeMatch[1]);
-    const desc = incomeMatch[2] || "Kirim (Telegram Bot)";
-
-    await prisma.transaction.create({
-      data: {
-        userId: user.id,
-        type: "INCOME",
-        amount,
-        description: desc,
-        status: "PAID",
-      },
-    });
-
-    await ctx.reply(`✅ <b>Kirim saqlandi!</b>\n💰 Summa: <b>+$${amount}</b>\n📝 Izoh: <i>${desc}</i>`, {
-      parse_mode: "HTML",
-    });
-    return;
-  }
-
-  // Quick Expense: -15 ...
-  const expenseMatch = text.match(/^-\s*(\d+(?:\.\d+)?)\s*(.*)$/);
-  if (expenseMatch) {
-    const amount = parseFloat(expenseMatch[1]);
-    const desc = expenseMatch[2] || "Chiqim (Telegram Bot)";
-
-    await prisma.transaction.create({
-      data: {
-        userId: user.id,
-        type: "EXPENSE",
-        amount,
-        description: desc,
-        status: "PAID",
-      },
-    });
-
-    await ctx.reply(`✅ <b>Xarajat saqlandi!</b>\n💸 Summa: <b>-$${amount}</b>\n📝 Izoh: <i>${desc}</i>`, {
-      parse_mode: "HTML",
-    });
-    return;
-  }
-
-  await ctx.reply(
-    `❓ Noma'lum buyruq.\n\nTezkor kiritish uchun:\n<code>+50 Upwork</code> yoki <code>-15 Tushlik</code> deb yozing.`
-  );
+  await handleEntryText(ctx, ctx.message.text.trim(), false);
 });
 
-console.log("🤖 Gig Tracker Telegram boti ishga tushdi...");
-bot.start();
+bot.on(["message:voice", "message:audio", "message:video_note"], async (ctx) => {
+  const file = ctx.message.voice || ctx.message.audio || ctx.message.video_note;
+  if (!file) return;
+
+  if (!isVoiceTranscriptionConfigured()) {
+    await ctx.reply(
+      "🎙 <b>Ovozli xabar qabul qilindi.</b>\n\n" +
+        "Ammo ovozni matnga aylantirish sozlanmagan " +
+        "(<code>GOOGLE_SPEECH_API_KEY</code> yoki <code>GOOGLE_SERVICE_ACCOUNT_JSON</code>).\n" +
+        "Iltimos, matn orqali yozing.",
+      html
+    );
+    return;
+  }
+
+  const duration = "duration" in file ? file.duration : undefined;
+  if (duration && duration > MAX_SYNC_AUDIO_SECONDS) {
+    await ctx.reply(
+      `🎙 Ovozli xabar juda uzun (${duration} soniya). ` +
+        `Iltimos, ${MAX_SYNC_AUDIO_SECONDS} soniyagacha bo'lgan qisqa xabar yuboring.`
+    );
+    return;
+  }
+
+  await ctx.reply("⏳ Ovozli xabar qayta ishlanmoqda...");
+
+  const transcript = await transcribeTelegramVoice({
+    botToken: token,
+    fileId: file.file_id,
+    durationSeconds: duration,
+  });
+
+  if (!transcript) {
+    await ctx.reply("❌ Ovozni aniqlab bo'lmadi. Yana bir bor urinib ko'ring yoki matn yozing.");
+    return;
+  }
+
+  await ctx.reply(buildVoiceHeardMessage(transcript), html);
+  await handleEntryText(ctx, transcript, true);
+});
+
+bot.catch((err) => {
+  console.error("Bot xatosi:", err);
+});
+
+async function main() {
+  // Telegram refuses getUpdates while a webhook is registered, so the classic
+  // mode has to remove it first.
+  try {
+    await bot.api.deleteWebhook();
+  } catch (e: any) {
+    console.warn("⚠️  deleteWebhook o'tmadi (e'tiborsiz qoldirildi):", e?.message || e);
+  }
+
+  const me = await bot.api.getMe();
+
+  console.log(`🤖 @${me.username} ishga tushdi (long-polling).`);
+  console.log(
+    `   Ma'lumotlar: ${isDatabaseConfigured() ? "ma'lumotlar bazasi (DATABASE_URL)" : "Mini App (qurilma xotirasi)"}`
+  );
+  console.log(
+    `   Ovozli xabar: ${isVoiceTranscriptionConfigured() ? `yoqilgan — ${speechProviderLabel()}` : "o'chirilgan — kalit yo'q"}`
+  );
+  console.log(`   Mini App URL: ${appUrl}`);
+
+  const stop = () => bot.stop();
+  process.once("SIGINT", stop);
+  process.once("SIGTERM", stop);
+
+  await bot.start();
+}
+
+main().catch((e: any) => {
+  console.error("❌ Botni ishga tushirib bo'lmadi:", e?.message || e);
+  console.error("   TELEGRAM_BOT_TOKEN to'g'riligini va internet ulanishini tekshiring.");
+  process.exit(1);
+});
