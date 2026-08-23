@@ -4,10 +4,15 @@ import React, { useState, useEffect, useCallback } from "react";
 import { DashboardStats, Transaction, Category, Client } from "@/types";
 import {
   getLocalWorkplaces,
+  saveLocalWorkplace,
+  deleteLocalWorkplace,
   getLocalCategories,
+  saveLocalCategory,
+  deleteLocalCategory,
   getLocalTransactions,
-  calculateLocalStats,
   saveLocalTransaction,
+  deleteLocalTransaction,
+  calculateLocalStats,
 } from "@/lib/storage";
 import { DashboardHeader } from "@/components/dashboard-header";
 import { StatsCards } from "@/components/stats-cards";
@@ -42,9 +47,8 @@ export default function Home() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedDateForModal, setSelectedDateForModal] = useState<Date | undefined>(undefined);
 
-  // Load data immediately from LocalStorage, then try background sync
-  const loadData = useCallback(async () => {
-    // 1. Instant local load
+  // Sync state from storage
+  const syncFromStorage = useCallback(() => {
     const localWp = getLocalWorkplaces();
     const localCats = getLocalCategories();
     const localTxs = getLocalTransactions();
@@ -54,48 +58,46 @@ export default function Home() {
     setCategories(localCats);
     setTransactions(localTxs);
     setStats(localSt);
-
-    // 2. Background API sync attempt
-    try {
-      const [statsRes, txRes, catRes, clientRes] = await Promise.allSettled([
-        fetch("/api/stats"),
-        fetch("/api/transactions"),
-        fetch("/api/categories"),
-        fetch("/api/clients"),
-      ]);
-
-      if (clientRes.status === "fulfilled" && clientRes.value.ok) {
-        const clientData = await clientRes.value.json();
-        if (Array.isArray(clientData) && clientData.length > 0) {
-          setClients(clientData);
-        }
-      }
-      if (catRes.status === "fulfilled" && catRes.value.ok) {
-        const catData = await catRes.value.json();
-        if (Array.isArray(catData) && catData.length > 0) {
-          setCategories(catData);
-        }
-      }
-      if (txRes.status === "fulfilled" && txRes.value.ok) {
-        const txData = await txRes.value.json();
-        if (Array.isArray(txData) && txData.length > 0) {
-          setTransactions(txData);
-        }
-      }
-      if (statsRes.status === "fulfilled" && statsRes.value.ok) {
-        const statsData = await statsRes.value.json();
-        if (statsData && statsData.totalGrossIncome !== undefined) {
-          setStats(statsData);
-        }
-      }
-    } catch {
-      // Fallback works automatically from local storage
-    }
   }, [currency]);
 
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    syncFromStorage();
+  }, [syncFromStorage]);
+
+  // Transaction CRUD Handlers (Instant State + Storage Update)
+  const handleAddOrEditTransaction = (txData: Partial<Transaction>) => {
+    const updatedList = saveLocalTransaction(txData);
+    setTransactions(updatedList);
+    setStats(calculateLocalStats(updatedList, currency));
+  };
+
+  const handleDeleteTransaction = (id: string) => {
+    const updatedList = deleteLocalTransaction(id);
+    setTransactions(updatedList);
+    setStats(calculateLocalStats(updatedList, currency));
+  };
+
+  // Client CRUD Handlers
+  const handleAddOrEditClient = (clientData: Partial<Client>) => {
+    const updatedList = saveLocalWorkplace(clientData);
+    setClients(updatedList);
+  };
+
+  const handleDeleteClient = (id: string) => {
+    const updatedList = deleteLocalWorkplace(id);
+    setClients(updatedList);
+  };
+
+  // Category CRUD Handlers
+  const handleAddOrEditCategory = (catData: Partial<Category>) => {
+    const updatedList = saveLocalCategory(catData);
+    setCategories(updatedList);
+  };
+
+  const handleDeleteCategory = (id: string) => {
+    const updatedList = deleteLocalCategory(id);
+    setCategories(updatedList);
+  };
 
   const handleUpdateGoal = (newTarget: number) => {
     setGoal((prev) => ({ ...prev, target: newTarget }));
@@ -261,7 +263,7 @@ export default function Home() {
           <CalendarView
             transactions={transactions}
             onSelectDate={handleCalendarDayClick}
-            onRefresh={loadData}
+            onRefresh={syncFromStorage}
           />
         )}
 
@@ -270,7 +272,9 @@ export default function Home() {
           <SalaryMonthlyView
             transactions={transactions}
             clients={clients}
-            onRefresh={loadData}
+            onRefresh={syncFromStorage}
+            onEditTransaction={handleAddOrEditTransaction}
+            onDeleteTransaction={handleDeleteTransaction}
           />
         )}
 
@@ -281,12 +285,17 @@ export default function Home() {
 
         {/* 4. TRANSACTIONS */}
         {activeTab === "transactions" && (
-          <TransactionList transactions={transactions} onRefresh={loadData} />
+          <TransactionList
+            transactions={transactions}
+            onRefresh={syncFromStorage}
+            onEditTransaction={handleAddOrEditTransaction}
+            onDeleteTransaction={handleDeleteTransaction}
+          />
         )}
 
         {/* 5. INVOICES */}
         {activeTab === "invoices" && (
-          <InvoicesView transactions={transactions} onRefresh={loadData} />
+          <InvoicesView transactions={transactions} onRefresh={syncFromStorage} />
         )}
 
         {/* 6. SETTINGS & WORKPLACES */}
@@ -294,7 +303,11 @@ export default function Home() {
           <SettingsView
             clients={clients}
             categories={categories}
-            onRefresh={loadData}
+            onRefresh={syncFromStorage}
+            onAddClient={handleAddOrEditClient}
+            onDeleteClient={handleDeleteClient}
+            onAddCategory={handleAddOrEditCategory}
+            onDeleteCategory={handleDeleteCategory}
           />
         )}
       </main>
@@ -324,7 +337,7 @@ export default function Home() {
             setSelectedDateForModal(undefined);
           }}
           onSuccess={() => {
-            loadData();
+            syncFromStorage();
           }}
         />
       )}

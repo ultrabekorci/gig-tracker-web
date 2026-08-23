@@ -16,26 +16,46 @@ import {
   Layers,
   Plus,
   Trash2,
+  Edit2,
   Check,
   Sparkles,
   Zap,
+  X,
+  Save,
 } from "lucide-react";
 
 interface SettingsViewProps {
   clients: Client[];
   categories: Category[];
   onRefresh: () => void;
+  onAddClient?: (wp: Partial<Client>) => void;
+  onDeleteClient?: (id: string) => void;
+  onAddCategory?: (cat: Partial<Category>) => void;
+  onDeleteCategory?: (id: string) => void;
 }
 
-export function SettingsView({ clients, categories, onRefresh }: SettingsViewProps) {
+export function SettingsView({
+  clients,
+  categories,
+  onRefresh,
+  onAddClient,
+  onDeleteClient,
+  onAddCategory,
+  onDeleteCategory,
+}: SettingsViewProps) {
   const { currency, setCurrency, hapticFeedback } = useTelegram();
 
   // New Client State
   const [newClientName, setNewClientName] = useState("");
-  const [newClientFee, setNewClientFee] = useState("0");
   const [newClientHourly, setNewClientHourly] = useState("10320");
   const [newClientDaily, setNewClientDaily] = useState("120000");
   const [newClientPlatform, setNewClientPlatform] = useState("Kunlik ish");
+
+  // Edit Client Modal
+  const [editingClient, setEditingClient] = useState<Client | null>(null);
+  const [editClientName, setEditClientName] = useState("");
+  const [editClientHourly, setEditClientHourly] = useState("");
+  const [editClientDaily, setEditClientDaily] = useState("");
 
   // New Category State
   const [newCatName, setNewCatName] = useState("");
@@ -43,8 +63,6 @@ export function SettingsView({ clients, categories, onRefresh }: SettingsViewPro
 
   // Custom Currency State
   const [customCurrency, setCustomCurrency] = useState("");
-
-  const [loading, setLoading] = useState(false);
 
   // Common Currency Presets
   const [currencyPresets, setCurrencyPresets] = useState([
@@ -76,119 +94,122 @@ export function SettingsView({ clients, categories, onRefresh }: SettingsViewPro
 
   const colorOptions = ["#6366f1", "#10b981", "#f59e0b", "#ec4899", "#8b5cf6", "#06b6d4", "#f43f5e"];
 
-  const handleAddClient = async (
+  const handleAddClientSubmit = (
     name: string,
     platformType: string = "Workplace",
-    feeRate: number = 0,
     hourly: number = 10320,
     daily: number = 120000
   ) => {
     if (!name || !name.trim()) return;
-    setLoading(true);
-    try {
-      hapticFeedback("light");
-      const randomColor = colorOptions[Math.floor(Math.random() * colorOptions.length)];
+    hapticFeedback("light");
+    const randomColor = colorOptions[Math.floor(Math.random() * colorOptions.length)];
 
-      // 1. Save locally immediately!
-      saveLocalWorkplace({
-        name: name.trim(),
-        platform: platformType,
-        defaultFeeRate: feeRate,
-        defaultHourlyRate: hourly,
-        defaultDailyRate: daily,
-        color: randomColor,
-      });
+    const newWpData: Partial<Client> = {
+      name: name.trim(),
+      platform: platformType,
+      defaultHourlyRate: hourly,
+      defaultDailyRate: daily,
+      defaultFeeRate: 0,
+      color: randomColor,
+      isActive: true,
+    };
 
-      // 2. Try API
-      fetch("/api/clients", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: name.trim(),
-          platform: platformType,
-          defaultFeeRate: feeRate,
-          defaultHourlyRate: hourly,
-          defaultDailyRate: daily,
-          color: randomColor,
-        }),
-      }).catch(() => {});
-
-      setNewClientName("");
-      setNewClientFee("0");
-      hapticFeedback("success");
-      onRefresh();
-    } catch (e) {
-      console.error(e);
-      hapticFeedback("error");
-    } finally {
-      setLoading(false);
+    if (onAddClient) {
+      onAddClient(newWpData);
+    } else {
+      saveLocalWorkplace(newWpData);
     }
+
+    // Try backend sync
+    fetch("/api/clients", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(newWpData),
+    }).catch(() => {});
+
+    setNewClientName("");
+    hapticFeedback("success");
+    onRefresh();
   };
 
-  const handleDeleteClient = async (id: string) => {
+  const handleDeleteClientSubmit = (id: string) => {
     if (!confirm("Ushbu ish manbasini o'chirmoqchimisiz?")) return;
-    try {
-      hapticFeedback("warning");
-      // 1. Delete locally immediately!
+    hapticFeedback("warning");
+    if (onDeleteClient) {
+      onDeleteClient(id);
+    } else {
       deleteLocalWorkplace(id);
-
-      // 2. Try API
-      fetch(`/api/clients/${id}`, { method: "DELETE" }).catch(() => {});
-
-      hapticFeedback("success");
-      onRefresh();
-    } catch (e) {
-      console.error(e);
     }
+    fetch(`/api/clients/${id}`, { method: "DELETE" }).catch(() => {});
+    onRefresh();
   };
 
-  const handleAddCategory = async (name: string, type: "EXPENSE" | "INCOME") => {
+  const handleOpenEditClient = (c: Client) => {
+    setEditingClient(c);
+    setEditClientName(c.name);
+    setEditClientHourly((c.defaultHourlyRate || 10320).toString());
+    setEditClientDaily((c.defaultDailyRate || 120000).toString());
+    hapticFeedback("light");
+  };
+
+  const handleSaveEditClient = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingClient) return;
+
+    const updated: Client = {
+      ...editingClient,
+      name: editClientName.trim() || editingClient.name,
+      defaultHourlyRate: parseFloat(editClientHourly) || 10320,
+      defaultDailyRate: parseFloat(editClientDaily) || 120000,
+    };
+
+    if (onAddClient) {
+      onAddClient(updated);
+    } else {
+      saveLocalWorkplace(updated);
+    }
+
+    setEditingClient(null);
+    hapticFeedback("success");
+    onRefresh();
+  };
+
+  const handleAddCategorySubmit = (name: string, type: "EXPENSE" | "INCOME") => {
     if (!name || !name.trim()) return;
-    setLoading(true);
-    try {
-      hapticFeedback("light");
-      // 1. Save locally immediately!
-      saveLocalCategory({
-        name: name.trim(),
-        type,
-      });
+    hapticFeedback("light");
 
-      // 2. Try API
-      fetch("/api/categories", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: name.trim(),
-          type,
-        }),
-      }).catch(() => {});
+    const newCatData: Partial<Category> = {
+      name: name.trim(),
+      type,
+    };
 
-      setNewCatName("");
-      hapticFeedback("success");
-      onRefresh();
-    } catch (e) {
-      console.error(e);
-      hapticFeedback("error");
-    } finally {
-      setLoading(false);
+    if (onAddCategory) {
+      onAddCategory(newCatData);
+    } else {
+      saveLocalCategory(newCatData);
     }
+
+    fetch("/api/categories", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(newCatData),
+    }).catch(() => {});
+
+    setNewCatName("");
+    hapticFeedback("success");
+    onRefresh();
   };
 
-  const handleDeleteCategory = async (id: string) => {
+  const handleDeleteCategorySubmit = (id: string) => {
     if (!confirm("Ushbu kategoriyani o'chirmoqchimisiz?")) return;
-    try {
-      hapticFeedback("warning");
-      // 1. Delete locally immediately!
+    hapticFeedback("warning");
+    if (onDeleteCategory) {
+      onDeleteCategory(id);
+    } else {
       deleteLocalCategory(id);
-
-      // 2. Try API
-      fetch(`/api/categories/${id}`, { method: "DELETE" }).catch(() => {});
-
-      hapticFeedback("success");
-      onRefresh();
-    } catch (e) {
-      console.error(e);
     }
+    fetch(`/api/categories/${id}`, { method: "DELETE" }).catch(() => {});
+    onRefresh();
   };
 
   const handleCustomCurrencySubmit = (e: React.FormEvent) => {
@@ -271,9 +292,9 @@ export function SettingsView({ clients, categories, onRefresh }: SettingsViewPro
         <div className="flex items-center space-x-2.5">
           <Briefcase className="w-5 h-5 text-indigo-500" />
           <div>
-            <h3 className="font-bold text-sm sm:text-base text-foreground">Ish Joylari va Obektlar (Workplaces)</h3>
+            <h3 className="font-bold text-sm sm:text-base text-foreground">Ish Joylari va Obektlar ({clients.length})</h3>
             <p className="text-xs text-gray-500 dark:text-gray-400">
-              Yekaterina, Emart, Zavod yoki yangi obektlarni qo'shing va boshqaring
+              Yangi ish joyini qo'shing yoki mavjudlarini tahrirlang
             </p>
           </div>
         </div>
@@ -290,7 +311,7 @@ export function SettingsView({ clients, categories, onRefresh }: SettingsViewPro
                 <button
                   key={idx}
                   disabled={alreadyAdded}
-                  onClick={() => handleAddClient(p.name, p.platform, p.fee, p.hourly, p.daily)}
+                  onClick={() => handleAddClientSubmit(p.name, p.platform, p.hourly, p.daily)}
                   className={`px-3 py-1.5 rounded-xl text-xs font-semibold border flex items-center space-x-1.5 transition-all ${
                     alreadyAdded
                       ? "opacity-50 cursor-not-allowed bg-gray-100 dark:bg-gray-800 border-border text-gray-400"
@@ -322,8 +343,8 @@ export function SettingsView({ clients, categories, onRefresh }: SettingsViewPro
             className="px-3.5 py-2.5 text-xs rounded-xl bg-card border border-border text-foreground font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500"
           />
           <button
-            onClick={() => handleAddClient(newClientName, newClientPlatform, parseFloat(newClientFee) || 0, parseFloat(newClientHourly) || 10320, parseFloat(newClientDaily) || 120000)}
-            disabled={loading || !newClientName.trim()}
+            onClick={() => handleAddClientSubmit(newClientName, newClientPlatform, parseFloat(newClientHourly) || 10320, parseFloat(newClientDaily) || 120000)}
+            disabled={!newClientName.trim()}
             className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl transition-colors flex items-center justify-center space-x-1 shadow-sm"
           >
             <Plus className="w-4 h-4" />
@@ -331,43 +352,125 @@ export function SettingsView({ clients, categories, onRefresh }: SettingsViewPro
           </button>
         </div>
 
-        {/* Existing List */}
+        {/* Existing List with Edit & Delete */}
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
           {clients.map((c) => (
             <div
               key={c.id}
-              className="flex items-center justify-between p-3.5 rounded-2xl bg-gray-50 dark:bg-gray-900/60 border border-border"
+              className="flex items-center justify-between p-3.5 rounded-2xl bg-gray-50 dark:bg-gray-900/60 border border-border hover:border-indigo-500/40 transition-all"
             >
-              <div className="flex items-center space-x-2.5">
+              <div className="flex items-center space-x-2.5 min-w-0">
                 <span
                   className="w-3 h-3 rounded-full flex-shrink-0"
                   style={{ backgroundColor: c.color || "#6366f1" }}
                 />
-                <div>
-                  <p className="font-bold text-xs sm:text-sm text-foreground">{c.name}</p>
+                <div className="min-w-0">
+                  <p className="font-bold text-xs sm:text-sm text-foreground truncate">{c.name}</p>
                   <p className="text-[11px] text-gray-400">
                     {c.defaultHourlyRate ? `${c.defaultHourlyRate.toLocaleString()} ₩/soat` : "Kunlik smena"}
                   </p>
                 </div>
               </div>
-              <button
-                onClick={() => handleDeleteClient(c.id)}
-                className="p-1.5 text-gray-400 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-colors"
-                title="O'chirish"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
+
+              <div className="flex items-center space-x-1 flex-shrink-0">
+                {/* Edit Button */}
+                <button
+                  onClick={() => handleOpenEditClient(c)}
+                  className="p-1.5 text-indigo-500 hover:bg-indigo-500/10 rounded-lg transition-colors"
+                  title="Tahrirlash"
+                >
+                  <Edit2 className="w-3.5 h-3.5" />
+                </button>
+
+                {/* Delete Button */}
+                <button
+                  onClick={() => handleDeleteClientSubmit(c.id)}
+                  className="p-1.5 text-gray-400 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-colors"
+                  title="O'chirish"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
           ))}
         </div>
       </div>
+
+      {/* Edit Client Modal */}
+      {editingClient && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-card border border-border w-full max-w-md rounded-3xl shadow-2xl overflow-hidden p-5 space-y-4">
+            <div className="flex items-center justify-between border-b border-border pb-3">
+              <h4 className="font-bold text-sm text-foreground flex items-center gap-1.5">
+                <Edit2 className="w-4 h-4 text-indigo-500" />
+                <span>Ish Joyini Tahrirlash</span>
+              </h4>
+              <button
+                onClick={() => setEditingClient(null)}
+                className="p-1 rounded-full text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditClient} className="space-y-3">
+              <div>
+                <label className="text-xs font-bold text-gray-400">Ish Joyi Nomi</label>
+                <input
+                  type="text"
+                  value={editClientName}
+                  onChange={(e) => setEditClientName(e.target.value)}
+                  className="w-full mt-1 px-3 py-2 text-xs font-bold rounded-xl bg-gray-50 dark:bg-gray-900 border border-border text-foreground"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-gray-400">Standart Soatlik Stavka ({currency})</label>
+                <input
+                  type="number"
+                  value={editClientHourly}
+                  onChange={(e) => setEditClientHourly(e.target.value)}
+                  className="w-full mt-1 px-3 py-2 text-xs font-bold rounded-xl bg-gray-50 dark:bg-gray-900 border border-border text-foreground"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-gray-400">Standart Kunlik Stavka ({currency})</label>
+                <input
+                  type="number"
+                  value={editClientDaily}
+                  onChange={(e) => setEditClientDaily(e.target.value)}
+                  className="w-full mt-1 px-3 py-2 text-xs font-bold rounded-xl bg-gray-50 dark:bg-gray-900 border border-border text-foreground"
+                />
+              </div>
+
+              <div className="pt-2 flex items-center space-x-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingClient(null)}
+                  className="flex-1 py-2.5 rounded-xl border border-border text-xs font-bold text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
+                >
+                  Bekor qilish
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold flex items-center justify-center gap-1 shadow-md shadow-indigo-600/20"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  <span>Saqlash</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* 3. Categories Customization */}
       <div className="bg-card border border-border rounded-3xl p-5 sm:p-6 space-y-4 shadow-sm">
         <div className="flex items-center space-x-2.5">
           <Layers className="w-5 h-5 text-emerald-500" />
           <div>
-            <h3 className="font-bold text-sm sm:text-base text-foreground">Kategoriyalar (Toifalar)</h3>
+            <h3 className="font-bold text-sm sm:text-base text-foreground">Kategoriyalar / Toifalar ({categories.length})</h3>
             <p className="text-xs text-gray-500 dark:text-gray-400">
               Kirim va xarajat toifalarini boshqarish
             </p>
@@ -386,7 +489,7 @@ export function SettingsView({ clients, categories, onRefresh }: SettingsViewPro
                 <button
                   key={idx}
                   disabled={alreadyAdded}
-                  onClick={() => handleAddCategory(cat.name, cat.type)}
+                  onClick={() => handleAddCategorySubmit(cat.name, cat.type)}
                   className={`px-3 py-1.5 rounded-xl text-xs font-semibold border flex items-center space-x-1.5 transition-all ${
                     alreadyAdded
                       ? "opacity-50 cursor-not-allowed bg-gray-100 dark:bg-gray-800 border-border text-gray-400"
@@ -419,8 +522,8 @@ export function SettingsView({ clients, categories, onRefresh }: SettingsViewPro
             <option value="INCOME">🟢 Kirim (Daromad)</option>
           </select>
           <button
-            onClick={() => handleAddCategory(newCatName, newCatType)}
-            disabled={loading || !newCatName.trim()}
+            onClick={() => handleAddCategorySubmit(newCatName, newCatType)}
+            disabled={!newCatName.trim()}
             className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl transition-colors flex items-center justify-center space-x-1 shadow-sm"
           >
             <Plus className="w-4 h-4" />
@@ -444,7 +547,7 @@ export function SettingsView({ clients, categories, onRefresh }: SettingsViewPro
                 <span className="font-bold text-xs text-foreground">{c.name}</span>
               </div>
               <button
-                onClick={() => handleDeleteCategory(c.id)}
+                onClick={() => handleDeleteCategorySubmit(c.id)}
                 className="p-1.5 text-gray-400 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-colors"
                 title="O'chirish"
               >

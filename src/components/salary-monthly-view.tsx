@@ -2,27 +2,41 @@
 
 import React, { useState } from "react";
 import { Transaction, Client } from "@/types";
-import { formatCurrency, formatDate } from "@/lib/utils";
+import { formatCurrency } from "@/lib/utils";
 import { useTelegram } from "./telegram-provider";
 import {
   Briefcase,
   Calendar,
-  Clock,
-  ChevronRight,
   Sparkles,
-  Layers,
   Trash2,
+  Edit2,
+  X,
+  Save,
 } from "lucide-react";
 
 interface SalaryMonthlyViewProps {
   transactions: Transaction[];
   clients: Client[];
   onRefresh: () => void;
+  onEditTransaction?: (tx: Transaction) => void;
+  onDeleteTransaction?: (id: string) => void;
 }
 
-export function SalaryMonthlyView({ transactions, clients, onRefresh }: SalaryMonthlyViewProps) {
+export function SalaryMonthlyView({
+  transactions,
+  clients,
+  onRefresh,
+  onEditTransaction,
+  onDeleteTransaction,
+}: SalaryMonthlyViewProps) {
   const { currency, hapticFeedback } = useTelegram();
   const [activeTab, setActiveTab] = useState<"WORKPLACE" | "WORK_RECORD">("WORKPLACE");
+
+  // Edit State
+  const [editingTx, setEditingTx] = useState<Transaction | null>(null);
+  const [editAmount, setEditAmount] = useState("");
+  const [editHours, setEditHours] = useState("");
+  const [editDesc, setEditDesc] = useState("");
 
   // Only consider paid income shifts
   const shiftList = transactions.filter((t) => t.type === "INCOME" && t.status === "PAID");
@@ -44,7 +58,7 @@ export function SalaryMonthlyView({ transactions, clients, onRefresh }: SalaryMo
   >();
 
   shiftList.forEach((t) => {
-    const clientName = t.client?.name || "Boshqa";
+    const clientName = t.client?.name || (t.clientId === "client-yekaterina" ? "Yekaterina" : t.clientId === "client-emart" ? "Emart" : t.clientId === "client-xasanboy" ? "Xasanboy aka" : "Boshqa");
     const existing = workplaceSummaryMap.get(clientName) || {
       clientName,
       amount: 0,
@@ -64,18 +78,40 @@ export function SalaryMonthlyView({ transactions, clients, onRefresh }: SalaryMo
     percentage: totalActualPayment > 0 ? Math.round((data.amount / totalActualPayment) * 100) : 0,
   }));
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = (id: string) => {
     if (!confirm("Ushbu smena yozuvini o'chirmoqchimisiz?")) return;
-    try {
-      hapticFeedback("warning");
-      const res = await fetch(`/api/transactions/${id}`, { method: "DELETE" });
-      if (res.ok) {
-        hapticFeedback("success");
-        onRefresh();
-      }
-    } catch (e) {
-      console.error(e);
+    hapticFeedback("warning");
+    if (onDeleteTransaction) {
+      onDeleteTransaction(id);
     }
+    onRefresh();
+  };
+
+  const handleOpenEdit = (tx: Transaction) => {
+    setEditingTx(tx);
+    setEditAmount(tx.amount.toString());
+    setEditHours((tx.totalHours || 8).toString());
+    setEditDesc(tx.description || "");
+    hapticFeedback("light");
+  };
+
+  const handleSaveEdit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingTx) return;
+
+    const updated: Transaction = {
+      ...editingTx,
+      amount: parseFloat(editAmount) || editingTx.amount,
+      totalHours: parseFloat(editHours) || editingTx.totalHours,
+      description: editDesc.trim() || editingTx.description,
+    };
+
+    if (onEditTransaction) {
+      onEditTransaction(updated);
+    }
+    hapticFeedback("success");
+    setEditingTx(null);
+    onRefresh();
   };
 
   return (
@@ -208,7 +244,7 @@ export function SalaryMonthlyView({ transactions, clients, onRefresh }: SalaryMo
                             style={{ backgroundColor: tx.client?.color || tx.color || "#6366f1" }}
                           />
                           <p className="font-bold text-xs sm:text-sm text-foreground truncate">
-                            {tx.client?.name || "Smena"}
+                            {tx.client?.name || tx.description || "Smena"}
                           </p>
                         </div>
                         <div className="flex items-center space-x-2 text-[11px] text-gray-400 mt-0.5 font-mono">
@@ -220,21 +256,31 @@ export function SalaryMonthlyView({ transactions, clients, onRefresh }: SalaryMo
                       </div>
                     </div>
 
-                    {/* Right: Amount & Delete */}
-                    <div className="flex items-center space-x-3 flex-shrink-0">
-                      <div className="text-right">
+                    {/* Right: Amount & Actions (Edit & Delete) */}
+                    <div className="flex items-center space-x-2.5 flex-shrink-0">
+                      <div className="text-right mr-1">
                         <span className="font-black text-xs sm:text-sm text-indigo-600 dark:text-indigo-400 block">
                           +{formatCurrency(tx.amount, currency)}
                         </span>
-                        <span className="text-[10px] text-gray-400">{tx.totalHours || 8} hours</span>
+                        <span className="text-[10px] text-gray-400">{tx.totalHours || 8} soat</span>
                       </div>
 
+                      {/* Edit Button */}
+                      <button
+                        onClick={() => handleOpenEdit(tx)}
+                        className="p-1.5 text-indigo-500 hover:bg-indigo-500/10 rounded-lg transition-colors"
+                        title="Tahrirlash"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+
+                      {/* Delete Button */}
                       <button
                         onClick={() => handleDelete(tx.id)}
                         className="p-1.5 text-gray-400 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-colors"
                         title="O'chirish"
                       >
-                        <Trash2 className="w-4 h-4" />
+                        <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
                   </div>
@@ -244,6 +290,75 @@ export function SalaryMonthlyView({ transactions, clients, onRefresh }: SalaryMo
           </div>
         )}
       </div>
+
+      {/* Edit Shift Modal */}
+      {editingTx && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-card border border-border w-full max-w-md rounded-3xl shadow-2xl overflow-hidden p-5 space-y-4">
+            <div className="flex items-center justify-between border-b border-border pb-3">
+              <h4 className="font-bold text-sm text-foreground flex items-center gap-1.5">
+                <Edit2 className="w-4 h-4 text-indigo-500" />
+                <span>Smena Yozuvini Tahrirlash</span>
+              </h4>
+              <button
+                onClick={() => setEditingTx(null)}
+                className="p-1 rounded-full text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEdit} className="space-y-3">
+              <div>
+                <label className="text-xs font-bold text-gray-400">Kunlik Ish Haqi ({currency})</label>
+                <input
+                  type="number"
+                  value={editAmount}
+                  onChange={(e) => setEditAmount(e.target.value)}
+                  className="w-full mt-1 px-3 py-2 text-base font-black rounded-xl bg-gray-50 dark:bg-gray-900 border border-border text-foreground"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-gray-400">Ishlangan Soat</label>
+                <input
+                  type="number"
+                  value={editHours}
+                  onChange={(e) => setEditHours(e.target.value)}
+                  className="w-full mt-1 px-3 py-2 text-xs font-semibold rounded-xl bg-gray-50 dark:bg-gray-900 border border-border text-foreground"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-gray-400">Izoh (Memo)</label>
+                <input
+                  type="text"
+                  value={editDesc}
+                  onChange={(e) => setEditDesc(e.target.value)}
+                  className="w-full mt-1 px-3 py-2 text-xs font-semibold rounded-xl bg-gray-50 dark:bg-gray-900 border border-border text-foreground"
+                />
+              </div>
+
+              <div className="pt-2 flex items-center space-x-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingTx(null)}
+                  className="flex-1 py-2.5 rounded-xl border border-border text-xs font-bold text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
+                >
+                  Bekor qilish
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold flex items-center justify-center gap-1 shadow-md shadow-indigo-600/20"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  <span>Saqlash</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

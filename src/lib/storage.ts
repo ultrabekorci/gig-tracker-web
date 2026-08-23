@@ -1,8 +1,8 @@
 import { Client, Category, Transaction, DashboardStats } from "@/types";
 
-const WORKPLACES_KEY = "gig_tracker_workplaces_v2";
-const CATEGORIES_KEY = "gig_tracker_categories_v2";
-const TRANSACTIONS_KEY = "gig_tracker_transactions_v2";
+const WORKPLACES_KEY = "gig_tracker_workplaces_v3";
+const CATEGORIES_KEY = "gig_tracker_categories_v3";
+const TRANSACTIONS_KEY = "gig_tracker_transactions_v3";
 
 export const DEFAULT_WORKPLACES: Client[] = [
   {
@@ -107,10 +107,13 @@ export function getLocalWorkplaces(): Client[] {
   }
 }
 
-export function saveLocalWorkplace(wp: Partial<Client>): Client {
+export function saveLocalWorkplace(wp: Partial<Client>): Client[] {
   const current = getLocalWorkplaces();
-  const newWp: Client = {
-    id: wp.id || `client-${Date.now()}`,
+  const id = wp.id || `client-${Date.now()}`;
+  const existingIdx = current.findIndex((c) => c.id === id);
+
+  const updatedWp: Client = {
+    id,
     name: wp.name || "Yangi Ish Joyi",
     platform: wp.platform || "Workplace",
     color: wp.color || "#6366f1",
@@ -120,9 +123,17 @@ export function saveLocalWorkplace(wp: Partial<Client>): Client {
     isActive: true,
     userId: "default-user",
   };
-  const updated = [newWp, ...current.filter((c) => c.id !== newWp.id)];
-  localStorage.setItem(WORKPLACES_KEY, JSON.stringify(updated));
-  return newWp;
+
+  let updatedList: Client[];
+  if (existingIdx >= 0) {
+    updatedList = [...current];
+    updatedList[existingIdx] = updatedWp;
+  } else {
+    updatedList = [updatedWp, ...current];
+  }
+
+  localStorage.setItem(WORKPLACES_KEY, JSON.stringify(updatedList));
+  return updatedList;
 }
 
 export function deleteLocalWorkplace(id: string): Client[] {
@@ -147,18 +158,29 @@ export function getLocalCategories(): Category[] {
   }
 }
 
-export function saveLocalCategory(cat: Partial<Category>): Category {
+export function saveLocalCategory(cat: Partial<Category>): Category[] {
   const current = getLocalCategories();
+  const id = cat.id || `cat-${Date.now()}`;
+  const existingIdx = current.findIndex((c) => c.id === id);
+
   const newCat: Category = {
-    id: cat.id || `cat-${Date.now()}`,
+    id,
     name: cat.name || "Kategoriya",
     type: cat.type || "EXPENSE",
     icon: cat.icon || "tag",
     userId: "default-user",
   };
-  const updated = [...current, newCat];
-  localStorage.setItem(CATEGORIES_KEY, JSON.stringify(updated));
-  return newCat;
+
+  let updatedList: Category[];
+  if (existingIdx >= 0) {
+    updatedList = [...current];
+    updatedList[existingIdx] = newCat;
+  } else {
+    updatedList = [...current, newCat];
+  }
+
+  localStorage.setItem(CATEGORIES_KEY, JSON.stringify(updatedList));
+  return updatedList;
 }
 
 export function deleteLocalCategory(id: string): Category[] {
@@ -183,10 +205,13 @@ export function getLocalTransactions(): Transaction[] {
   }
 }
 
-export function saveLocalTransaction(tx: Partial<Transaction>): Transaction {
+export function saveLocalTransaction(tx: Partial<Transaction>): Transaction[] {
   const current = getLocalTransactions();
-  const newTx: Transaction = {
-    id: tx.id || `tx-${Date.now()}`,
+  const id = tx.id || `tx-${Date.now()}`;
+  const existingIdx = current.findIndex((t) => t.id === id);
+
+  const updatedTx: Transaction = {
+    id,
     userId: "default-user",
     type: tx.type || "INCOME",
     workType: tx.workType || "HOURLY_WAGE",
@@ -210,9 +235,17 @@ export function saveLocalTransaction(tx: Partial<Transaction>): Transaction {
     fee: tx.fee || 0,
     createdAt: new Date(),
   };
-  const updated = [newTx, ...current.filter((t) => t.id !== newTx.id)];
-  localStorage.setItem(TRANSACTIONS_KEY, JSON.stringify(updated));
-  return newTx;
+
+  let updatedList: Transaction[];
+  if (existingIdx >= 0) {
+    updatedList = [...current];
+    updatedList[existingIdx] = updatedTx;
+  } else {
+    updatedList = [updatedTx, ...current];
+  }
+
+  localStorage.setItem(TRANSACTIONS_KEY, JSON.stringify(updatedList));
+  return updatedList;
 }
 
 export function deleteLocalTransaction(id: string): Transaction[] {
