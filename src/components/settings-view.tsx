@@ -282,6 +282,7 @@ export function SettingsView({
               localStorage.setItem("gig_tracker_workplaces_v3", JSON.stringify(parsed.workplaces));
               localStorage.setItem("gig_tracker_categories_v3", JSON.stringify(parsed.categories));
               localStorage.setItem("gig_tracker_transactions_v3", JSON.stringify(parsed.transactions));
+              localStorage.setItem("gig_tracker_seeded_v3", "1");
               hapticFeedback("success");
               onRefresh();
             }
@@ -305,6 +306,10 @@ export function SettingsView({
         localStorage.removeItem("gig_tracker_workplaces_v3");
         localStorage.removeItem("gig_tracker_categories_v3");
         localStorage.removeItem("gig_tracker_transactions_v3");
+        localStorage.removeItem("gig_tracker_goal_v3");
+        // The seed marker stays, so the demo data is not restored right after
+        // the user has explicitly wiped everything.
+        localStorage.setItem("gig_tracker_seeded_v3", "1");
         hapticFeedback("success");
         onRefresh();
       }
@@ -426,7 +431,7 @@ export function SettingsView({
         </div>
 
         {/* Add custom form */}
-        <div className="p-4 rounded-2xl bg-gray-50 dark:bg-gray-900 border border-border grid grid-cols-1 sm:grid-cols-4 gap-2.5">
+        <div className="p-4 rounded-2xl bg-gray-50 dark:bg-gray-900 border border-border grid grid-cols-1 sm:grid-cols-5 gap-2.5">
           <input
             type="text"
             value={newClientName}
@@ -439,6 +444,13 @@ export function SettingsView({
             value={newClientHourly}
             onChange={(e) => setNewClientHourly(e.target.value)}
             placeholder="Soatlik stavka (10320)"
+            className="px-3.5 py-2.5 text-xs rounded-xl bg-card border border-border text-foreground font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500"
+          />
+          <input
+            type="number"
+            value={newClientDaily}
+            onChange={(e) => setNewClientDaily(e.target.value)}
+            placeholder="Kunlik stavka (120000)"
             className="px-3.5 py-2.5 text-xs rounded-xl bg-card border border-border text-foreground font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500"
           />
           <button

@@ -2,6 +2,18 @@ import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * Telegram rejects a parse_mode=HTML message whose text contains raw "<", ">"
+ * or "&", so anything coming from the user has to be escaped before it is
+ * embedded into a message.
+ */
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
 export async function GET(request: Request) {
   try {
     const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -87,7 +99,7 @@ export async function POST(request: Request) {
         const aiData = await aiRes.json();
         if (aiData.text) {
           text = aiData.text;
-          await sendMessage(`🗣 <b>Sizning gapingiz:</b>\n<i>"${text}"</i>`);
+          await sendMessage(`🗣 <b>Sizning gapingiz:</b>\n<i>"${escapeHtml(text)}"</i>`);
         } else {
           await sendMessage(`❌ Ovozni aniqlab bo'lmadi.`);
           return NextResponse.json({ ok: true });
@@ -101,7 +113,7 @@ export async function POST(request: Request) {
     // Handle /start
     if (text.startsWith("/start")) {
       await sendMessage(
-        `👋 <b>Assalomu alaykum, ${sender.first_name}!</b>\n\n` +
+        `👋 <b>Assalomu alaykum, ${escapeHtml(sender.first_name || "")}!</b>\n\n` +
         `Sizning ma'lumotlaringiz ilovaning o'zida (telefon xotirasida) saqlanadi.\n` +
         `Smena qo'shish uchun matn yozing yoki ovozli xabar yuboring.\n\n` +
         `Misol: <code>120 ming zavodda ishladim</code>\n\n` +
@@ -121,15 +133,23 @@ export async function POST(request: Request) {
       type = "EXPENSE";
     }
 
-    // Extract numbers
-    const numMatch = text.match(/\d+([.,]\d+)?/g);
+    // Extract numbers — "120000", "120 000", "120.000" and "120 ming" all mean
+    // the same amount, so grouping separators are dropped first.
+    const numMatch = text.match(/\d[\d\s.,]*\d|\d/);
     if (numMatch) {
-      let rawNum = parseFloat(numMatch[0].replace(",", "."));
-      if (text.toLowerCase().includes("ming")) rawNum *= 1000;
-      amount = rawNum;
-      
+      const raw = numMatch[0];
+      const compact = raw.replace(/\s/g, "");
+      // "120.000" / "120,000" are grouped thousands; "12.5" is a decimal.
+      const normalized = /^\d{1,3}([.,]\d{3})+$/.test(compact)
+        ? compact.replace(/[.,]/g, "")
+        : compact.replace(",", ".");
+      const rawNum = parseFloat(normalized);
+      if (!isNaN(rawNum)) {
+        amount = text.toLowerCase().includes("ming") ? rawNum * 1000 : rawNum;
+      }
+
       // Clean up description
-      desc = text.replace(numMatch[0], "").replace(/ming|ishladim|zavodda/gi, "").trim();
+      desc = text.replace(raw, "").replace(/ming|ishladim|zavodda/gi, "").replace(/^[-+\s]+/, "").trim();
       if (desc.length < 2) desc = type === "INCOME" ? "Smena (Bot)" : "Xarajat (Bot)";
     }
 
@@ -140,7 +160,7 @@ export async function POST(request: Request) {
       await sendMessage(
         `✅ <b>Ma'lumot aniqlandi!</b>\n\n` +
         `${type === "INCOME" ? "💰 Daromad" : "💸 Xarajat"}: <b>${amount.toLocaleString()}</b>\n` +
-        `📝 Izoh: <i>${desc}</i>\n\n` +
+        `📝 Izoh: <i>${escapeHtml(desc)}</i>\n\n` +
         `Ilovaga saqlash uchun quyidagi tugmani bosing:`,
         { inline_keyboard: [[{ text: "📥 Ilovada Saqlash", web_app: { url: deepLinkUrl } }]] }
       );

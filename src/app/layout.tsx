@@ -34,6 +34,13 @@ export default function RootLayout({
           src="https://telegram.org/js/telegram-web-app.js"
           strategy="beforeInteractive"
         />
+        {/* Apply the saved theme before the first paint, otherwise a light-mode
+            user sees a dark flash on every load. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{var t=localStorage.getItem('theme');if(t==='light'){document.documentElement.classList.remove('dark');}}catch(e){}`,
+          }}
+        />
       </head>
       <body className="min-h-screen bg-background text-foreground antialiased transition-colors duration-200">
         <TelegramProvider>

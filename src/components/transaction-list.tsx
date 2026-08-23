@@ -41,20 +41,23 @@ export function TransactionList({
   const [editHours, setEditHours] = useState("");
   const [editStatus, setEditStatus] = useState<"PAID" | "PENDING">("PAID");
 
-  const filtered = transactions.filter((tx) => {
-    if (filterType === "INCOME" && (tx.type !== "INCOME" || tx.status !== "PAID")) return false;
-    if (filterType === "EXPENSE" && tx.type !== "EXPENSE") return false;
-    if (filterType === "PENDING" && tx.status !== "PENDING") return false;
+  // Newest first — the stored order is not guaranteed to be chronological.
+  const filtered = [...transactions]
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    .filter((tx) => {
+      if (filterType === "INCOME" && (tx.type !== "INCOME" || tx.status !== "PAID")) return false;
+      if (filterType === "EXPENSE" && tx.type !== "EXPENSE") return false;
+      if (filterType === "PENDING" && tx.status !== "PENDING") return false;
 
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      const desc = (tx.description || "").toLowerCase();
-      const client = (tx.client?.name || "").toLowerCase();
-      const cat = (tx.category?.name || "").toLowerCase();
-      return desc.includes(q) || client.includes(q) || cat.includes(q);
-    }
-    return true;
-  });
+      if (search.trim()) {
+        const q = search.toLowerCase();
+        const desc = (tx.description || "").toLowerCase();
+        const client = (tx.client?.name || "").toLowerCase();
+        const cat = (tx.category?.name || "").toLowerCase();
+        return desc.includes(q) || client.includes(q) || cat.includes(q);
+      }
+      return true;
+    });
 
   const handleOpenEdit = (tx: Transaction) => {
     setEditingTx(tx);

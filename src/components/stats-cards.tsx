@@ -2,7 +2,7 @@
 
 import React from "react";
 import { DashboardStats, Transaction } from "@/types";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, toDateKey } from "@/lib/utils";
 import { useTelegram } from "./telegram-provider";
 import { TrendingUp, ArrowDownRight, Clock, DollarSign, ShieldCheck } from "lucide-react";
 
@@ -12,28 +12,20 @@ function calculateStreak(txs: Transaction[]): number {
   const incomeDates = new Set(
     txs
       .filter(t => t.type === "INCOME" && t.status === "PAID")
-      .map(t => new Date(t.date).toISOString().split("T")[0])
+      .map(t => toDateKey(t.date))
   );
 
-  const todayStr = new Date().toISOString().split('T')[0];
-  
-  if (!incomeDates.has(todayStr)) {
+  const cursor = new Date();
+  if (!incomeDates.has(toDateKey(cursor))) {
     return 0;
   }
 
   let streak = 0;
-  let currentTimestamp = new Date(todayStr).getTime();
-  
-  while (true) {
-    const dateObj = new Date(currentTimestamp);
-    const dateStr = dateObj.toISOString().split('T')[0];
-    
-    if (incomeDates.has(dateStr)) {
-      streak++;
-      currentTimestamp -= 24 * 60 * 60 * 1000;
-    } else {
-      break;
-    }
+  // Step back one calendar day at a time using local dates — subtracting 24h
+  // from a UTC midnight skipped or repeated a day around DST changes.
+  while (incomeDates.has(toDateKey(cursor))) {
+    streak++;
+    cursor.setDate(cursor.getDate() - 1);
   }
 
   return streak;
@@ -53,8 +45,10 @@ export function StatsCards({ stats, transactions = [] }: { stats: DashboardStats
   }
 
   const streak = calculateStreak(transactions);
-  const todayStr = new Date().toISOString().split('T')[0];
-  const todaysTxs = transactions.filter(t => t.type === "INCOME" && t.status === "PAID" && new Date(t.date).toISOString().split("T")[0] === todayStr);
+  const todayStr = toDateKey(new Date());
+  const todaysTxs = transactions.filter(
+    (t) => t.type === "INCOME" && t.status === "PAID" && toDateKey(t.date) === todayStr
+  );
   const todaysEarnings = todaysTxs.reduce((sum, t) => sum + t.amount, 0);
   const todaysHours = todaysTxs.reduce((sum, t) => sum + (t.totalHours || 0), 0);
 
