@@ -25,6 +25,10 @@ const MONTHS: Record<string, number> = {
   dekabr: 12,
 };
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function dateKey(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
@@ -244,7 +248,10 @@ export function parseEntry(input: string): ParsedEntry | null {
   // The day is read (and removed) first so "12-avgust 121906" keeps 121906 as
   // the amount.
   const found = extractDate(body);
-  if (found?.matched) body = body.replace(found.matched, " ").trim();
+  if (found?.matched) {
+    // "24.08.2026 da" — the date carries a case ending that must go with it.
+    body = body.replace(new RegExp(`${escapeRegExp(found.matched)}\\s*(da|kuni|dagi)?\\b`, "i"), " ").trim();
+  }
 
   if (body.startsWith("+")) {
     type = "INCOME";

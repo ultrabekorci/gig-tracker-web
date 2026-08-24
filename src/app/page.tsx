@@ -41,6 +41,22 @@ import {
 
 const GOAL_KEY = "gig_tracker_goal_v3";
 
+/**
+ * Local transactions only store a clientId, so every view that shows a
+ * workplace name or colour needs the workplace attached first — otherwise a
+ * shift from the bot shows up as a nameless "Smena".
+ */
+function withWorkplaces(transactions: Transaction[], workplaces: Client[]): Transaction[] {
+  if (workplaces.length === 0) return transactions;
+  const byId = new Map(workplaces.map((w) => [w.id, w]));
+
+  return transactions.map((tx) => {
+    const client = tx.clientId ? byId.get(tx.clientId) : undefined;
+    if (!client) return tx;
+    return { ...tx, client, color: tx.color || client.color || null };
+  });
+}
+
 export default function Home() {
   const { currency, hapticFeedback } = useTelegram();
   const [stats, setStats] = useState<DashboardStats | null>(null);
@@ -79,7 +95,7 @@ export default function Home() {
 
     setClients(localWp);
     setCategories(localCats);
-    setTransactions(localTxs);
+    setTransactions(withWorkplaces(localTxs, localWp));
     setStats(localSt);
   }, [currency]);
 
@@ -91,7 +107,7 @@ export default function Home() {
   // the expense breakdown stays in sync).
   const applyTransactions = useCallback(
     (list: Transaction[]) => {
-      setTransactions(list);
+      setTransactions(withWorkplaces(list, getLocalWorkplaces()));
       setStats(calculateLocalStats(list, currency, getLocalCategories()));
     },
     [currency]
@@ -167,11 +183,13 @@ export default function Home() {
   const handleAddOrEditClient = (clientData: Partial<Client>) => {
     const updatedList = saveLocalWorkplace(clientData);
     setClients(updatedList);
+    setTransactions((prev) => withWorkplaces(prev, updatedList));
   };
 
   const handleDeleteClient = (id: string) => {
     const updatedList = deleteLocalWorkplace(id);
     setClients(updatedList);
+    setTransactions((prev) => withWorkplaces(prev, updatedList));
   };
 
   // Category CRUD Handlers
@@ -451,6 +469,7 @@ export default function Home() {
       {isDaySummaryModalOpen && selectedDateForModal && (
         <DaySummaryModal
           date={selectedDateForModal}
+          clients={clients}
           transactions={transactions.filter((t) => toDateKey(t.date) === toDateKey(selectedDateForModal))}
           onClose={() => setIsDaySummaryModalOpen(false)}
           onAddNew={() => {
