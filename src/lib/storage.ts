@@ -277,6 +277,11 @@ export function saveLocalTransaction(tx: Partial<Transaction>): Transaction[] {
     updatedList = [updatedTx, ...current];
   }
 
+  // client/category are looked up from the workplace and category lists on
+  // render; storing a copy would go stale as soon as one is renamed.
+  delete (updatedTx as Partial<Transaction>).client;
+  delete (updatedTx as Partial<Transaction>).category;
+
   updatedList.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   return writeList(TRANSACTIONS_KEY, updatedList);
 }
