@@ -21,8 +21,13 @@ import {
 export const dynamic = "force-dynamic";
 
 function appUrlFrom(request: Request): string {
-  const configured = process.env.NEXT_PUBLIC_APP_URL;
-  if (configured) return configured.replace(/\/$/, "");
+  const configured = process.env.NEXT_PUBLIC_APP_URL?.trim();
+  if (configured) {
+    // A value stored without a scheme ("my-app.vercel.app") would make every
+    // web_app button invalid, so it is completed here instead.
+    const withScheme = /^https?:\/\//i.test(configured) ? configured : `https://${configured}`;
+    return withScheme.replace(/\/$/, "");
+  }
   const host = request.headers.get("host") || "gig-tracker-web.vercel.app";
   const protocol = host.includes("localhost") ? "http" : "https";
   return `${protocol}://${host}`;

@@ -36,7 +36,11 @@ if (!token) {
 }
 
 const bot = new Bot(token);
-const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/$/, "");
+const configuredAppUrl = process.env.NEXT_PUBLIC_APP_URL?.trim() || "http://localhost:3000";
+const appUrl = (/^https?:\/\//i.test(configuredAppUrl) ? configuredAppUrl : `https://${configuredAppUrl}`).replace(
+  /\/$/,
+  ""
+);
 const defaultCurrency = process.env.DEFAULT_CURRENCY || "KRW";
 
 const appKeyboard = () =>

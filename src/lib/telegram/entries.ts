@@ -1,3 +1,4 @@
+import { parseDateKey } from "@/lib/utils";
 import type { ParsedEntry } from "./parse";
 
 export interface TelegramSender {
@@ -73,7 +74,7 @@ export async function saveEntryForSender(
         amount: entry.amount,
         currency: user.currency,
         description: entry.description,
-        date: new Date(),
+        date: entry.date ? parseDateKey(entry.date) : new Date(),
         status: "PAID",
       },
     });

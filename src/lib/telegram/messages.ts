@@ -1,4 +1,4 @@
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, formatDate, parseDateKey, toDateKey } from "@/lib/utils";
 import type { ParsedEntry } from "./parse";
 import type { TelegramStats } from "./entries";
 
@@ -38,13 +38,20 @@ export function buildHelpMessage(): string {
   );
 }
 
+/** Only worth showing when the entry is not for today. */
+function dateLine(entry: ParsedEntry): string {
+  if (!entry.date || entry.date === toDateKey(new Date())) return "";
+  return `\n📅 Sana: <b>${formatDate(parseDateKey(entry.date))}</b>`;
+}
+
 export function buildSavedMessage(entry: ParsedEntry, currency: string): string {
   const sign = entry.type === "INCOME" ? "+" : "−";
   const label = entry.type === "INCOME" ? "💰 Kirim saqlandi!" : "💸 Xarajat saqlandi!";
   return (
     `✅ <b>${label}</b>\n\n` +
     `Summa: <b>${sign}${formatCurrency(entry.amount, currency)}</b>\n` +
-    `📝 Izoh: <i>${escapeHtml(entry.description)}</i>`
+    `📝 Izoh: <i>${escapeHtml(entry.description)}</i>` +
+    dateLine(entry)
   );
 }
 
@@ -54,8 +61,9 @@ export function buildConfirmMessage(entry: ParsedEntry, currency: string): strin
     `✅ <b>Ma'lumot aniqlandi!</b>\n\n` +
     `${entry.type === "INCOME" ? "💰 Daromad" : "💸 Xarajat"}: ` +
     `<b>${formatCurrency(entry.amount, currency)}</b>\n` +
-    `📝 Izoh: <i>${escapeHtml(entry.description)}</i>\n\n` +
-    `Ilovaga saqlash uchun quyidagi tugmani bosing:`
+    `📝 Izoh: <i>${escapeHtml(entry.description)}</i>` +
+    dateLine(entry) +
+    `\n\nIlovaga saqlash uchun quyidagi tugmani bosing:`
   );
 }
 
@@ -65,6 +73,7 @@ export function buildDeepLink(appUrl: string, entry: ParsedEntry): string {
     type: entry.type,
     amount: String(entry.amount),
     desc: entry.description,
+    ...(entry.date ? { date: entry.date } : {}),
   });
   return `${appUrl}?${params.toString()}`;
 }
